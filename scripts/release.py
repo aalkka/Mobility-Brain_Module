@@ -159,14 +159,39 @@ def check(vault):
 CSS_NOTE = re.compile(rb"/\*(?!!).*?\*/", re.S)     # /*! 알림(라이선스)은 남김
 
 
-def strip_css(files):
-    """css 주석을 걷는다(만든 사람의 메모가 출시물에 실리지 않게 · 11-21) — 바뀐 css 의 sha·크기를 같은 항목 version.json(files·big)과
-    플러그인 설치 묶음 zip 안 같은 이름 css 에 맞춰 고친다. 폰 갱신기는 version.json 의 sha 로 받은 파일을 잰다."""
+def pairs_of(path):
+    """바꿈 짝(«찾을 글<TAB>바꿀 글» · 만드는 사람 볼트의 git 밖 파일) — js 안 \\uXXXX 꼴도 함께 바꾼다. 없으면 빈 목록."""
+    out = []
+    if path and os.path.isfile(path):
+        with open(path, encoding="utf-8") as f:
+            for ln in f:
+                ln = ln.rstrip("\n")
+                if ln.strip() and not ln.startswith("#"):
+                    a, _, b = ln.partition("\t")
+                    out.append((a.encode("utf-8"), b.encode("utf-8")))
+                    esc = lambda s, up: "".join(("\\u%04X" if up else "\\u%04x") % ord(c) if ord(c) > 127 else c for c in s).encode()  # noqa: E731
+                    for up in (False, True):
+                        out.append((esc(a, up), esc(b, up)))
+    return out
+
+
+def scrub(data, name, pairs):
+    if name.endswith(".css"):
+        data = CSS_NOTE.sub(b"", data)
+    if name.endswith((".css", ".js", ".json", ".html")):
+        for a, b in pairs:
+            data = data.replace(a, b)
+    return data
+
+
+def strip_css(files, pairs=()):
+    """css 주석을 걷고 바꿈 짝을 적용한다(만든 사람의 메모·호칭이 출시물에 실리지 않게 · 11-21) — 바뀐 파일의 sha·크기를 같은 항목
+    version.json(files·big)과 플러그인 설치 묶음 zip 안 파일에 맞춰 고친다. 폰 갱신기는 version.json 의 sha 로 받은 파일을 잰다."""
     out = dict(files)
     changed = {}
     for rel, b in files.items():
-        if rel.endswith(".css"):
-            nb = CSS_NOTE.sub(b"", b)
+        if not rel.endswith(("version.json", ".zip")):
+            nb = scrub(b, rel, pairs)
             if nb != b:
                 out[rel] = nb
                 changed[rel] = nb
@@ -192,16 +217,15 @@ def strip_css(files):
             buf = io.BytesIO()
             with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
                 for info in src.infolist():
-                    data = src.read(info)
-                    if info.filename.endswith(".css"):
-                        data = CSS_NOTE.sub(b"", data)
-                    z.writestr(info, data)
+                    z.writestr(info, scrub(src.read(info), info.filename, pairs))
             out[rel] = buf.getvalue()
     return out
 
 
-def pack(src_state, out):
+def pack(src_state, out, pairs_file=None):
     items, files = {}, {}
+    if pairs_file is None:      # 만드는 사람 볼트의 익명화 짝(dist-sync 자리 · git 밖) — 출시 자리가 그 볼트 안일 때
+        pairs_file = os.path.join(src_state, "..", "dist-sync", "anon-pairs.txt")
     for item in ITEMS:
         d = os.path.join(src_state, *item.split("/"))
         try:
@@ -217,7 +241,7 @@ def pack(src_state, out):
                 rel = item + "/" + os.path.relpath(p, d).replace(os.sep, "/")
                 with open(p, "rb") as f:
                     files[rel] = f.read()
-    files = strip_css(files)
+    files = strip_css(files, pairs_of(pairs_file))
     man = {"items": items, "files": {r: sha(b) for r, b in sorted(files.items())}, "made": time.strftime("%Y-%m-%d")}
     bad = verify(man, files)
     if bad:
