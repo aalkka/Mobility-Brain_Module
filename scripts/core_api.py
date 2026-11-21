@@ -5,7 +5,6 @@
 - 주제 기억 비우기(roles.forget_topics · 11-19 공개 함수로 옮김)
 - 찾기(search.py · 게이트 코어) — 불러오기 한 곳(이름 INDEX_PATH·load_index·load_query_model·ranked·notes)
 - 주제(topic.py) — 불러오기 한 곳
-- 기록 보존 순찰(3_시스템/autocommit.py · M8) — 코어 예약 «외부뇌 기록 보존»이 돌면 서버는 쉰다(예약이 없을 때만 옛 순찰을 대신)
 - Remote Control 상태(claude_bin.check · Claude Code bridge-pointer.json 은 server.rc_state) — 10분 담아 둠(프로세스를 띄움)
 코어가 바뀌면 dist-sync contracts.py 가 module.json update_check(server_check 등)를 돌려 여기서 깨지는지 본다.
 """
@@ -49,18 +48,6 @@ def search_module():
         sys.modules["brain_search"] = mod
         spec.loader.exec_module(mod)
     return mod
-
-
-# ───────── 기록 보존(M8) ─────────
-
-def autocommit_patrol():
-    """코어 예약이 최근에 돌았으면 '예약이 맡음' · 아니면 코어 순찰 한 번(by=server) · 코어 대본이 없으면 '코어 없음'."""
-    if not os.path.isfile(os.path.join(HERE, "autocommit.py")):
-        return "코어 없음"
-    import autocommit
-    if autocommit.schedule_alive():
-        return "예약이 맡음"
-    return autocommit.tick(by="server")
 
 
 # ───────── Remote Control 쓸 수 있나(M9) ─────────

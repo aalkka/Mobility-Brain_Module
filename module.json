@@ -31,7 +31,6 @@
     "3_시스템/nowin.py": ["install"],
     "3_시스템/brain.py": ["collect_alerts", "last_runs", "load_actions"],
     "3_시스템/claude_bin.py": ["LAPSED", "LIMIT", "LOGIN", "NOT_SUB", "NO_LOGIN", "TITLE", "alert", "check", "newest"],
-    "3_시스템/autocommit.py": ["schedule_alive", "tick"],
     "3_시스템/search.py": ["INDEX_PATH", "load_index", "load_query_model", "ranked", "notes"],
     "3_시스템/sort.py": ["INDEX", "adapter", "append_lines", "handoffs", "place_of", "state", "state_item", "systems", "tags", "write_if_changed"],
     "3_시스템/tag.py": ["dictionary", "rank"],

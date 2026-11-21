@@ -4175,22 +4175,8 @@ class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
 TOKEN_VALUE = ''
 
 
-# ───────── 기록 보존 — 코어로 옮김(M8 · 11-17 · 3_시스템/autocommit.py) ─────────
-# 11-12(사용자 «A: 서버가 24시간마다»)부터 여기서 돌던 순찰을 코어로 옮겼다 — 폰 모듈을 떼도 PC 기록 보존은 코어 예약 «외부뇌 기록 보존»이 한다.
-# 서버는 그 예약이 아직 없을 때만(등록은 사람 승인 · 그 사이 끊김 없게) 같은 코어 순찰을 대신 부른다 — 예약이 돌면 쉰다(core_api.autocommit_patrol).
-AC_EVERY = 30 * 60                       # 순찰 간격(코어 예약과 같음)
-
-
-def autocommit_loop():
-    time.sleep(10 * 60)                          # 켠 직후 PC 가 바쁠 때는 피한다
-    while True:
-        try:
-            r = core_api.autocommit_patrol()
-            if r not in ('예약이 맡음', '최근 커밋', '도는 중'):
-                log(f'기록 보존(서버 대신): {r}')
-        except Exception as e:  # noqa: BLE001
-            log(f'기록 보존(서버 대신) 오류 {type(e).__name__}')
-        time.sleep(AC_EVERY)
+# 기록 보존은 코어 예약 «외부뇌 기록 보존»(3_시스템/autocommit.py) 몫이다 — 서버가 예약 없을 때 대신 돌던 순찰은 11-21 뺐다
+# (본체 바깥 설정 autocommit-task 가 예약을 재고 등록한다 · mobility 경계 B3).
 
 
 def bind(port, tries=20, gap=0.5):
@@ -4248,8 +4234,6 @@ def main():
                 refresh_ssid()          # 핑이 SSID 를 기다리지 않게 읽어 둔다(ssid() · 10분 안이면 그 값)
     threading.Thread(target=sweep, daemon=True).start()
     threading.Thread(target=push_watch, daemon=True, name='push-watch').start()     # 즉시 알림 살피기(설정 push 가 없으면 아무것도 안 잼)
-    if not os.environ.get('BRAIN_SERVER_PORT'):      # 시험 서버(server_check)는 순찰하지 않는다
-        threading.Thread(target=autocommit_loop, daemon=True).start()
     srv.serve_forever()
 
 
