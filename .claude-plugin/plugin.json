@@ -1,7 +1,7 @@
 {
   "name": "mobility",
-  "description": "모바일 연결 — 폰이 PC 볼트에 닿는 서버(제공·검색·폰 기록·알림 당기기·RC 켜기) · 처음 설정 조리법(mobility:setup) · 바깥 설정(Tailscale·serve·예약) · 폰 플러그인·폰 앱 출시 자리 · 등록 대본 · 시험. 배포판에 싣지 않는다(배포판 꼴로 범용화).",
-  "version": "0.3.0",
+  "description": "모바일 연결 — 폰이 PC 볼트에 닿는 서버(제공·검색·폰 기록·알림 당기기·RC 켜기) · 처음 설정 조리법(mobility:setup) · 바깥 설정(Tailscale·serve·예약) · 폰 출시물 깔기(release.py) · 등록 대본 · 시험. 배포판에 싣지 않는다(배포판 꼴로 범용화).",
+  "version": "0.4.0",
   "author": {
     "name": "aalkka"
   }
