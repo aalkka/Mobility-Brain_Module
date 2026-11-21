@@ -30,6 +30,7 @@
     "3_시스템/inbox.py": ["classify_one", "execute", "items"],
     "3_시스템/nowin.py": ["install"],
     "3_시스템/brain.py": ["collect_alerts", "last_runs", "load_actions"],
+    "3_시스템/options.py": ["level"],
     "3_시스템/claude_bin.py": ["LAPSED", "LIMIT", "LOGIN", "NOT_SUB", "NO_LOGIN", "TITLE", "alert", "check", "newest"],
     "3_시스템/search.py": ["INDEX_PATH", "load_index", "load_query_model", "ranked", "notes"],
     "3_시스템/sort.py": ["INDEX", "adapter", "append_lines", "handoffs", "place_of", "state", "state_item", "systems", "tags", "write_if_changed"],
@@ -58,6 +59,13 @@
       "html": ".claude/skills/mobility/view/index.html",
       "data": ["{py}", ".claude/skills/mobility/scripts/pair.py", "view", "--reason", "{reason}"],
       "watch": ["3_시스템/_index/server/pair.json", "3_시스템/_index/server/pair-show.json"]},
+    "options": [
+      {"id": "mobility.viewer", "name": "폰 보기(원본 보기 플러그인) 받기", "levels": ["high", "off"], "labels": {"high": "켬", "off": "끔"},
+       "applies": "now", "recommend": "default",
+       "default_why": "폰·탭 옵시디언에서 PDF·hwp·시트·docx 원본과 필기를 열려면 필요 · 처음 열 때만 큰 묶음을 받음",
+       "cells": {"high": {"값": "PC 가 폰 보기를 내주고 폰이 저절로 깔고 갱신함 · 출시물 깔기에 포함(약 31MB)"},
+                 "off": {"잃음": "새 기기에 폰 보기가 안 깔리고 깔린 것은 갱신이 멈춤(지우려면 폰 옵시디언에서 끔) · 폰에서 원본·필기를 못 엶 · 이 PC 출시 자리에도 안 깖"}}}
+    ],
     "doctor": ["{py}", ".claude/skills/mobility/scripts/pair.py", "doctor"],
     "speed": ["{py}", ".claude/skills/mobility/scripts/speed_rows.py", "--days", "{days}"],
     "update_check": [

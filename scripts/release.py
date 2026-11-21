@@ -54,6 +54,23 @@ def ver_key(v):
     return None
 
 
+def viewer_off(vault):
+    """기능 단계 «폰 보기 받기»(mobility.viewer · 기본 켬) — 끔이면 폰 보기를 안 깔고 check 에서도 뺀다. 못 읽으면 켬."""
+    try:
+        sysdir = os.path.join(vault, "3_시스템")
+        if sysdir not in sys.path:
+            sys.path.insert(0, sysdir)
+        import options
+        return options.level("mobility.viewer", vault) == "off"
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def wanted(vault):
+    off = viewer_off(vault)
+    return [i for i in ITEMS if not (off and i == "plugin/brain-source-mobile")]
+
+
 def installed(vault, item):
     p = os.path.join(state(vault), *item.split("/"), "version.json")
     try:
@@ -122,7 +139,11 @@ def install(vault, src=None, dry=False):
     if bad:
         return {"ok": False, "어디서": where, "틀림": bad[:10]}
     done, skip = [], []
+    want = wanted(vault)
     for item, v in sorted((man.get("items") or {}).items()):
+        if item not in want:
+            skip.append("%s(기능 단계 끔)" % NAMES[item])
+            continue
         have = installed(vault, item)
         if have is not None and ver_key(have) is not None and ver_key(have) >= ver_key(v):
             skip.append("%s %s(깐 판 %s)" % (NAMES[item], v, have))
@@ -150,9 +171,12 @@ def install(vault, src=None, dry=False):
 
 
 def check(vault):
-    miss = [NAMES[i] for i in ITEMS if installed(vault, i) is None]
-    return (0, "출시물 넷 다 있음 — " + " · ".join("%s %s" % (NAMES[i], installed(vault, i)) for i in ITEMS)) if not miss \
-        else (1, "출시 자리에 없음: " + " · ".join(miss) + " — «release.py install» 로 깐다")
+    want = wanted(vault)
+    miss = [NAMES[i] for i in want if installed(vault, i) is None]
+    off = "" if len(want) == len(ITEMS) else " · 폰 보기 = 기능 단계 끔"
+    if miss:
+        return 1, "출시 자리에 없음: " + " · ".join(miss) + " — «release.py install» 로 깐다" + off
+    return 0, "출시물 %d 다 있음 — " % len(want) + " · ".join("%s %s" % (NAMES[i], installed(vault, i)) for i in want) + off
 
 
 # ───────── 묶기(만드는 사람) ─────────

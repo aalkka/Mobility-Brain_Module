@@ -577,6 +577,18 @@ def rc_cmd(env):
     return cmd
 
 
+VIEWER_ID = 'brain-source-mobile'
+
+
+def viewer_off():
+    """기능 단계 «폰 보기 받기»(mobility.viewer · 기본 켬) — 끔이면 폰에 폰 보기를 안 내준다. 못 읽으면 켬."""
+    try:
+        import options
+        return options.level('mobility.viewer', VAULT) == 'off'
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def rc_args():
     """RC 고정 명령 — 권한 꼴만 config «rc_mode»(조리법 · 기본 auto · RC_MODES 밖이면 auto) · 폰이 준 값은 안 씀"""
     m = config().get('rc_mode')
@@ -3947,6 +3959,8 @@ class H(http.server.BaseHTTPRequestHandler):
             return self.reply(200, body=data, headers={'ETag': tag})
         m = PLUGIN_PATH.fullmatch(u.path)
         if m:
+            if m.group(1) == VIEWER_ID and viewer_off():
+                raise Bad(404, '폰 보기 꺼짐')       # 기능 단계 mobility.viewer = 끔 — 폰은 표가 없으면 새로 안 깔고 갱신도 멈춘다(깔린 것은 폰에서 끔)
             a = os.path.join(STATE, 'plugin', m.group(1), m.group(2) or 'version.json')
             if not os.path.isfile(a):
                 raise Bad(404, '없음')

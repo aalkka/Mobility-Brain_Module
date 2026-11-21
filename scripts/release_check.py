@@ -114,6 +114,16 @@ with tempfile.TemporaryDirectory() as t:
     os.makedirs(os.path.join(v3, "3_시스템"))
     r = R.install(v3, z2)
     cj = open(os.path.join(v3, "3_시스템", "_index", "server", "plugin", "brain-calendar", "core.js"), "rb").read()
+    off0 = R.viewer_off                           # 기능 단계 mobility.viewer = 끔(11-21 사용자 «기본받음» · 기능별로 끌 수 있게)
+    R.viewer_off = lambda _v: True
+    v4 = os.path.join(t, "v4")
+    os.makedirs(os.path.join(v4, "3_시스템"))
+    r4 = R.install(v4, zp)
+    c4 = R.check(v4)
+    R.viewer_off = off0
+    ok("폰 보기 끔 = 안 깖 · check 는 셋만 봄", r4["ok"] and len(r4["깜"]) == 3 and any("기능 단계 끔" in x for x in r4["건너뜀"])
+       and c4[0] == 0 and not os.path.exists(os.path.join(v4, "3_시스템", "_index", "server", "plugin", "brain-source-mobile")), (r4, c4))
+    ok("기능 단계를 못 읽는 볼트 = 켬", R.viewer_off(v4) is False)
     ok("바꿈 짝 = 날 글·\\u 꼴 둘 다 · 깔기 sha 맞음", r["ok"] and "메모".encode() not in cj and b"\\uba54" not in cj and "글".encode() in cj and b"\\uae00" in cj, (r, cj))
 
 print("== 실패 %d건" % len(fails))
