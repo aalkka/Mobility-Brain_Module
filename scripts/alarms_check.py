@@ -16,6 +16,13 @@ import alarms  # noqa: E402
 alarms.SAVE_LAST = False     # 시험은 볼트 상태(_index/alarms/last-good.json)를 쓰지 않는다 — 맞았던 설정 적기는 Generic 이 임시 자리로 잰다
 import roles  # noqa: E402 — 대기열 사람 줄의 호칭(프로필)
 import schedule  # noqa: E402
+# 일정 폴더 = 임시 자리(11-21 · 새 볼트 설치 시험에서 3건 실패 — «파일» 칸은 일정 폴더에 있는 이름만 맞다고 보는데 시험이 이 볼트의 일정 파일에 기댔다)
+_SCHED = tempfile.mkdtemp(prefix='alarms-sched-')
+for _n in ('LMS-마감.md', '공지-마감.md', '내-일정.md', '반복-일정.md', '장학-마감.md', '학사일정.md'):
+    open(os.path.join(_SCHED, _n), 'w', encoding='utf-8').close()
+schedule.SCHED_DIR = _SCHED
+import atexit, shutil  # noqa: E401,E402
+atexit.register(shutil.rmtree, _SCHED, True)
 
 NOW = dt.datetime(2026, 11, 5, 12, 0, tzinfo=schedule.KST)
 SOON = '- [ ] 2026-11-06 (금) 23:59 물리 · 과제 마감 ^lms-asg-1'
