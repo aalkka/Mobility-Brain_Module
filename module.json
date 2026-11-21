@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "touches": [
+    "3_시스템/_index/server/",
+    "3_시스템/_index/alarms/",
+    "3_시스템/_index/sort/알림.json",
+    "3_시스템/_index/sort/알림.jsonl",
+    "3_시스템/_index/sort/알림.lock",
+    "2_지식/modules/mobility/"
+  ],
+  "reads": [
+    "3_시스템/설명서/"
+  ],
+  "forbids": [
+    "1_수집/**"
+  ],
+  "writes_config": [],
+  "invocation": "none",
+  "surfaces": {
+    "skills": ["setup"],
+    "hooks": [],
+    "mcp": []
+  },
+  "uses_core": {
+    "3_시스템/fileops.py": ["Ctx", "Stop", "find_event", "load_events", "op_cp", "op_mv", "op_replace", "op_restore", "op_rm", "op_undo", "sha256", "write_view"],
+    "3_시스템/roles.py": ["abs", "canon", "config", "find_note", "forget_topics", "me", "module_on", "modules", "path", "topic_of", "topics"],
+    "3_시스템/schedule.py": ["KST", "LINE", "RULE_FILE", "SCHED_DIR", "clean", "parse_all", "repeat"],
+    "3_시스템/topic.py": ["KST", "TODO", "chats", "entry", "ledger", "module_entries", "notes", "recent", "records", "status", "todos", "topic_dirs", "upcoming", "walk_files"],
+    "3_시스템/work.py": ["finish", "status"],
+    "3_시스템/inbox.py": ["classify_one", "execute", "items"],
+    "3_시스템/nowin.py": ["install"],
+    "3_시스템/brain.py": ["collect_alerts", "last_runs", "load_actions"],
+    "3_시스템/claude_bin.py": ["LAPSED", "LIMIT", "LOGIN", "NOT_SUB", "NO_LOGIN", "TITLE", "alert", "check", "newest"],
+    "3_시스템/autocommit.py": ["schedule_alive", "tick"],
+    "3_시스템/search.py": ["INDEX_PATH", "load_index", "load_query_model", "ranked", "notes"],
+    "3_시스템/sort.py": ["INDEX", "adapter", "append_lines", "handoffs", "place_of", "state", "state_item", "systems", "tags", "write_if_changed"],
+    "3_시스템/tag.py": ["dictionary", "rank"],
+    "3_시스템/views.json": []
+  },
+  "contributes": {
+    "phone": {"app": ["alarm", "widget", "inbox", "share", "ready-alert"]},
+    "manual": [{"file": ".claude/skills/mobility/manual/설명서-mobility.md", "name": "모바일 연결", "gist": "폰에서 볼트·캘린더·알림 · 처음 설정(조리법) · 바깥 설정 · 서버 등록 · 끄면"}],
+    "actions": [
+      {"id": "mobility.alarms", "name": "폰이 앞으로 울릴 알림", "risk": "read", "run": ["{py}", ".claude/skills/mobility/scripts/alarms.py", "--days", "3"]},
+      {"id": "mobility.alarms_check", "name": "알림 설정 점검", "risk": "read", "run": ["{py}", ".claude/skills/mobility/scripts/alarms.py", "--check"]},
+      {"id": "mobility.alarms_report", "name": "폰이 보고한 늦음·놓침", "risk": "read", "run": ["{py}", ".claude/skills/mobility/scripts/alarms.py", "--report"]},
+      {"id": "mobility.pair", "name": "기기 붙이기(짝 QR · 10분 · 4번)", "risk": "write", "run": ["{py}", ".claude/skills/mobility/scripts/pair.py", "new"]},
+      {"id": "mobility.pair_open", "name": "기기 붙이기 — 옵시디언 없이 브라우저로", "risk": "write", "run": ["{py}", ".claude/skills/mobility/scripts/pair.py", "new", "--open"]},
+      {"id": "mobility.rotate", "name": "열쇠 바꾸기(옛 열쇠 바로 죽음 · 기기마다 QR 다시)", "risk": "write", "run": ["{py}", ".claude/skills/mobility/scripts/pair.py", "rotate"]},
+      {"id": "mobility.devices", "name": "붙은 기기", "risk": "read", "run": ["{py}", ".claude/skills/mobility/scripts/pair.py", "status"]},
+      {"id": "mobility.ready", "name": "폰 준비 목록 보고", "risk": "read", "run": ["{py}", ".claude/skills/mobility/scripts/ready.py", "show"]},
+      {"id": "mobility.alert_list", "name": "분류 알림 — 알림 체계·앞으로 울릴 것·최근 낸 것", "risk": "read", "run": ["{py}", ".claude/skills/mobility/scripts/alert.py", "list"]},
+      {"id": "mobility.alert_now", "name": "지금 알림 하나(폰 · 수집 창 — 급함이면 잘 시간에도)", "risk": "write", "run": ["{py}", ".claude/skills/mobility/scripts/alert.py", "now", "{title}"], "args": [{"name": "title", "label": "제목"}], "rest": {"name": "opts", "label": "--text <글> · --urgent · --system <체계> · --target <대상> · --place <자리>"}},
+      {"id": "mobility.release_check", "name": "폰 출시물이 서버 자리에 있나", "risk": "read", "run": ["{py}", ".claude/skills/mobility/scripts/release.py", "check"]},
+      {"id": "mobility.release", "name": "폰 출시물 깔기(모듈 release/ 또는 모듈 저장소 최신 출시 · 낮추지 않음)", "risk": "write", "run": ["{py}", ".claude/skills/mobility/scripts/release.py", "install"]},
+      {"id": "mobility.push_report", "name": "즉시 알림 왕복·잃음·배터리(시험판)", "risk": "read", "run": ["{py}", ".claude/skills/mobility/scripts/alarms.py", "--push-report"]}
+    ],
+    "view": {"id": "pair", "name": "모바일 연결", "icon": "smartphone", "phone": false,
+      "html": ".claude/skills/mobility/view/index.html",
+      "data": ["{py}", ".claude/skills/mobility/scripts/pair.py", "view", "--reason", "{reason}"],
+      "watch": ["3_시스템/_index/server/pair.json", "3_시스템/_index/server/pair-show.json"]},
+    "doctor": ["{py}", ".claude/skills/mobility/scripts/pair.py", "doctor"],
+    "speed": ["{py}", ".claude/skills/mobility/scripts/speed_rows.py", "--days", "{days}"],
+    "update_check": [
+      ["{py}", "-u", ".claude/skills/mobility/scripts/server_check.py"],
+      ["{py}", "-u", ".claude/skills/mobility/scripts/alarms_check.py"],
+      ["{py}", "-u", ".claude/skills/mobility/scripts/setup_check.py"],
+      ["{py}", "-u", ".claude/skills/mobility/scripts/qr_check.py"],
+      ["{py}", "-u", ".claude/skills/mobility/scripts/release_check.py"]
+    ],
+    "outside": ".claude/skills/mobility/outside.json",
+    "after_restart": ".claude/skills/mobility/after_restart.json",
+    "setup": ".claude/skills/mobility/setup.json",
+    "notes": [
+      {"id": "alarm-settings", "name": "알림-설정", "path": "2_지식/modules/mobility/알림-설정.md", "template": ".claude/skills/mobility/templates/틀-알림-설정.md"},
+      {"id": "alarm-per-line", "name": "일정별-알림", "path": "2_지식/modules/mobility/일정별-알림.md", "template": ".claude/skills/mobility/templates/틀-일정별-알림.md"}
+    ]
+  },
+  "note": "손발(자율수집·알림·모바일) 가운데 폰과 연결된 부분(로드맵 손발 M5~M7). 배포판에 싣지 않는다(dist-diff «배포판에 안 싣는 모듈») — 그래도 배포판 꼴로 범용화한다(11-17 · 제작자 작업 노트). 서버 상태·출시 자리 = 3_시스템/_index/server/(폰 앱·서버 플러그인·폰 보기·폰 캘린더 빌드가 그 자리로 올린다 · git 밖). 알림 상태 = 3_시스템/_index/alarms/. 빌더는 볼트 밖이다(폰 플러그인 brain-server · 손발 앱 brain-phone · 폰 보기 brain-source · 폰 캘린더 brain-base calendar — 자리는 빌더마다 local.json). 서버는 예약 작업 «외부뇌 서버»라 모듈 스위치와 무관하게 돈다. 데스크톱은 이 모듈 없이 완결된다 — 수집 창 «알림» 칸·캘린더 종은 scripts/alarms.py·module.json 이 있을 때만 보인다. uses_core = 서버·알림이 부르는 코어 이름(module-forge ⑬ 이 잰다 · 코어 업데이트 뒤 dist-sync contracts.py 가 update_check 까지 돌린다)."
+}

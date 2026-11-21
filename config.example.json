@@ -1,0 +1,10 @@
+{
+ "_설명": "mobility 개인 값 예시(값은 가짜) — 진짜 파일은 <볼트>/3_시스템/_index/server/config.json(git 밖). 처음 설정(스킬 mobility:setup · scripts/setup.py apply)이 빈 칸만 채운다. 손으로 고쳐도 되고, 서버는 요청 때마다 다시 읽는다(port 만 서버를 다시 켜야 함). 칸 뜻·꼴의 원본 = setup.json. 이 «_설명» 칸은 진짜 파일에 넣지 않아도 된다(서버는 모르는 칸을 무시).",
+ "port": 8377,
+ "home_wifi": ["<집 Wi-Fi 이름>"],
+ "phone_sensitive": "show",
+ "write_schedule": "내-일정.md",
+ "rc_mode": "auto",
+ "lock_ttl": 120,
+ "alarms": {}
+}

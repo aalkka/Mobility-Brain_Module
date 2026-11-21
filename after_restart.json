@@ -1,0 +1,20 @@
+{
+  "설명": "mobility 가 자동 재시작(본체 3_시스템/restart.py) 뒤 다시 띄우고 재는 것 — 폰이 PC 에 닿는 길. 칸 = 3_시스템/after_restart.json 설명.",
+  "항목": [
+    {"id": "mobility.tailscale", "name": "Tailscale 로그인(tailnet 연결)", "when": "always",
+     "check": {"cmd": ["{py}", ".claude/skills/mobility/scripts/pc_state.py", "login"]},
+     "grace_s": 120, "run": ["C:\\Program Files\\Tailscale\\tailscale-ipn.exe"], "wait_s": 60},
+    {"id": "mobility.server_session", "name": "볼트 서버가 사용자 세션에서 돎(로그인 전 S4U 서버 → 바꿈)", "when": "always",
+     "check": {"cmd": ["{py}", ".claude/skills/mobility/scripts/server_swap.py", "check"]},
+     "run": ["{py}", ".claude/skills/mobility/scripts/server_swap.py", "swap"], "hidden": true, "wait_s": 90},
+    {"id": "mobility.server", "name": "볼트 서버(예약 «외부뇌 서버»)", "when": "always",
+     "check": {"cmd": ["{py}", ".claude/skills/mobility/scripts/pc_state.py", "alive"]},
+     "run": ["schtasks", "/run", "/tn", "외부뇌 서버"], "hidden": true, "wait_s": 90},
+    {"id": "mobility.serve", "name": "Tailscale serve → 서버", "when": "always",
+     "check": {"cmd": ["{py}", ".claude/skills/mobility/scripts/pc_state.py", "serve"]}},
+    {"id": "mobility.rc", "name": "Claude 원격 제어 서버(서버가 창 없이 띄움)", "when": "was_running",
+     "was": {"name": "claude.exe", "cmd": "\\sremote-control(\\s|$)"},
+     "check": {"proc": {"name": "claude.exe", "cmd": "\\sremote-control(\\s|$)"}},
+     "run": ["{py}", ".claude/skills/mobility/scripts/rc_up.py"], "hidden": true, "wait_s": 90}
+  ]
+}

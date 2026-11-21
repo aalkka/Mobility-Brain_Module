@@ -1,0 +1,3 @@
+__pycache__/
+*.pyc
+scripts/autocommit_check.py
