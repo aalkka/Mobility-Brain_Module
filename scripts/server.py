@@ -24,6 +24,7 @@
   GET  /v1/alarms                       # 폰이 울릴 목록(알림-설정.md 를 요청 때마다 읽음 · ETag → 304)
   GET  /v1/plugin/<id>                  # 폰 플러그인이 올라온 판(version.json 그대로 · 해시는 올릴 때 적은 값 — 깨진 파일을 폰이 잡는다)
   GET  /v1/plugin/<id>/core.js|styles.css   # 그 판의 파일
+  GET  /v1/plugin/brain-server/brain-server.zip   # 폰 옵시디언 처음 설치 묶음(손발 앱 «볼트 만들기» · /pair/plugin 과 같은 파일 · 열쇠로)
   GET  /v1/app/brain-phone              # 폰 앱 자기 갱신: 올라온 판(version·name·sha256·size — 올릴 때 적은 값 그대로 · 폰은 내려받은 파일의 해시를 이 값과 맞춘 뒤에만 깐다)
   GET  /v1/app/brain-phone/brain-phone.apk   # 그 판의 APK(조각 받기 됨) — 개인용 APK 라 서버 열쇠가 들어 있다: 자리는 _index/server/app/ 하나뿐
   POST /v1/memo     {text, at, name}    # 받은함에 메모(at = 폰에서 적은 때 · name = 폰 새 노트 이름 · 덮어쓰지 않는다 · 같은 글을 또 보내면 한 벌)
@@ -160,7 +161,7 @@ BYTE_RANGE = re.compile(r'bytes=(\d*)-(\d*)')       # 한 구간만 — 여러 �
 LOG_MAX = 2 ** 20                                   # 넘으면 server.log.1 로 밀고 새로 쓴다
 DIAG_BODY, DIAG_LINES, DIAG_CHARS, DIAG_DAY = 64 * 2 ** 10, 50, 240, 1000     # 폰이 고장 나도 로그가 안 불어나게
 RESERVED = re.compile(r'(con|prn|aux|nul|com\d|lpt\d)(\..*)?', re.I)    # 윈도 예약 이름
-PLUGIN_PATH = re.compile(r'/v1/plugin/([a-z0-9-]+)(?:/(core\.js|styles\.css|main\.js|manifest\.json|hwp\.js|rhwp_bg\.wasm|sheet\.js|calc\.js|edit\.js|edit\.css|sheetedit\.js|hwpedit\.js|inkpdf\.js))?')    # 이 꼴 말고는 못 읽는다(위로 나가기 없음) · main·manifest = 폰 보기 플러그인 설치 · hwp·sheet·calc(.sheet 수식 계산 · 모바일볼트 4-5) = 그 형식을 처음 열 때 받는 큰 묶음 · edit·sheetedit·hwpedit(+edit.css) = 폰 편집(«고치기»를 처음 누를 때) · inkpdf = 필기를 PDF 로(처음 내보낼 때)
+PLUGIN_PATH = re.compile(r'/v1/plugin/([a-z0-9-]+)(?:/(core\.js|styles\.css|main\.js|manifest\.json|brain-server\.zip|hwp\.js|rhwp_bg\.wasm|sheet\.js|calc\.js|edit\.js|edit\.css|sheetedit\.js|hwpedit\.js|inkpdf\.js))?')    # 이 꼴 말고는 못 읽는다(위로 나가기 없음) · main·manifest = 폰 보기 플러그인 설치 · hwp·sheet·calc(.sheet 수식 계산 · 모바일볼트 4-5) = 그 형식을 처음 열 때 받는 큰 묶음 · edit·sheetedit·hwpedit(+edit.css) = 폰 편집(«고치기»를 처음 누를 때) · inkpdf = 필기를 PDF 로(처음 내보낼 때) · brain-server.zip = 손발 앱이 폰 옵시디언 볼트를 만들 때(M2 · 11-26 · 열쇠로 · 짝 코드 없이)
 APP_PATH = re.compile(r'/v1/app/(brain-phone)(?:/(brain-phone\.apk))?')    # 폰 앱 자기 갱신 — 이 꼴 말고는 못 읽는다 · 파일은 STATE/app/<id>/ 의 version.json 과 APK 뿐(빌더 build.py --publish 가 올린다)
 CTRL = re.compile(r'[\x00-\x1f\x7f]+')
 LOG_LOCK = threading.Lock()
@@ -4265,7 +4266,7 @@ class H(http.server.BaseHTTPRequestHandler):
             if not m.group(2):
                 with open(a, 'rb') as f:
                     return self.reply(200, body=f.read())
-            ct = {'.css': 'text/css; charset=utf-8', '.wasm': 'application/wasm', '.json': 'application/json; charset=utf-8'}.get(os.path.splitext(a)[1], 'text/javascript; charset=utf-8')
+            ct = {'.css': 'text/css; charset=utf-8', '.wasm': 'application/wasm', '.json': 'application/json; charset=utf-8', '.zip': 'application/zip'}.get(os.path.splitext(a)[1], 'text/javascript; charset=utf-8')
             return self.send_part(a, ct, etag_of(a), self.headers.get('Range'))    # 큰 묶음도 조각으로 · 서버 메모리 고정
         m = APP_PATH.fullmatch(u.path)
         if m:                                           # 폰 앱 자기 갱신(플러그인 판과 같은 방식 · 열쇠는 위에서 이미 봤다)

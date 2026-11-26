@@ -376,6 +376,7 @@ def page(code, base, have_app, have_plugin):
     if have_app:
         rows.append(f'<a class="b" href="/pair/app?c={c}">손발 앱 받기</a>')
     rows.append(f'<a class="b p" href="intent://pair?u={b}&amp;c={c}#Intent;scheme=brainphone;package=brain.phone;end">손발 앱에 넣기</a>')
+    rows.append('<div class="h">손발 앱에 넣으면 이어서 «볼트 만들기»로 폰 옵시디언 볼트·플러그인까지 앱이 만들어 줍니다. 아래 둘은 손으로 넣을 때만.</div>')
     if have_plugin:
         rows.append(f'<a class="b" href="/pair/plugin?c={c}">옵시디언 플러그인 받기</a>')
     rows.append(f'<a class="b p" href="obsidian://brain-server?pair={c}&amp;u={b}">옵시디언에 넣기</a>')

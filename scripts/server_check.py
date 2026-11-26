@@ -1404,6 +1404,13 @@ def main():
         for bad in ('/v1/plugin/brain-server/secret.py', '/v1/plugin/brain-server/version.json', '/v1/plugin/brain-server/../../token', '/v1/plugin/..%2f..%2ftoken', '/v1/plugin/BAD', '/v1/plugin/brain-server/core.js/x', '/v1/plugin/brain_server'):
             ok(f'판 길 막힘 {bad}', call(port, tok, 'GET', bad)[0] == 404)
         ok('판 열쇠 없으면 401', call(port, None, 'GET', '/v1/plugin/brain-server')[0] == 401)
+        ok('처음 설치 묶음 없음 = 404', call(port, tok, 'GET', '/v1/plugin/brain-server/brain-server.zip')[0] == 404)
+        with open(os.path.join(pub, 'brain-server.zip'), 'wb') as f:
+            f.write(b'PK-zip-test')
+        c, h, b = call(port, tok, 'GET', '/v1/plugin/brain-server/brain-server.zip')
+        ok('처음 설치 묶음(손발 앱 «볼트 만들기» · M2) = 열쇠로 바이트 그대로 · zip · 열쇠 없으면 401', c == 200 and b == b'PK-zip-test' and h.get('Content-Type') == 'application/zip'
+           and call(port, None, 'GET', '/v1/plugin/brain-server/brain-server.zip')[0] == 401, str(c))
+        os.remove(os.path.join(pub, 'brain-server.zip'))         # 뒤 시험 P11(묶음 없음)이 같은 자리를 본다
 
         # ── 폰 보기 플러그인의 큰 묶음(그 형식을 처음 열 때 받는다) ──
         big = os.path.join(s, '_index', 'server', 'plugin', 'brain-source-mobile')
