@@ -1657,6 +1657,38 @@ while time.time() < end:
                 srv.rc_kill(q)
             os.remove(pointer)
             ok('N13 RC 안 돎 = 없음', (srv.rc_nightly(now=t5, force=True) or {}).get('result') == '없음')
+
+            # ── RC 되살리기(11-27) — 서버와 함께 사라진 서버 몫 RC 만 다시 띄움 · 서버가 죽음을 봤으면(gone) 안 띄움 · 세션 0 안 함
+            rw = srv.rc_resume_why
+            ok('R1 판정 — 세션 0 · 돎 · 기록 없음 · gone = 안 함 · 기록 있고 안 돎 = 되살림',
+               rw({'pid': 1}, False, 0).startswith('세션 0') and rw({'pid': 1}, True, 1) == 'RC 돎' and rw(None, False, 1).startswith('서버가 띄운 RC 기록 없음')
+               and rw({'pid': 1, 'gone': 1}, False, 1).startswith('서버가 돌던 중에') and rw({'pid': 2 ** 31 - 1, 'start': 1}, False, None) == '')
+            srv._rc_seen['pid'] = None
+            json.dump({'pid': 2 ** 31 - 1, 'start': 1, 'at': 1}, open(srv.RC_OWN, 'w', encoding='utf-8'))
+            ok('R2 재부팅 뒤 새 서버(살아 있는 것을 본 적 없음) = 죽었어도 gone 안 적음', srv.rc_seen_tick() is None and 'gone' not in json.load(open(srv.RC_OWN, encoding='utf-8')))
+            os.environ['BRAIN_RC_BIN'] = json.dumps([sys.executable, tree_rc, pointer, 'idle'])
+            why = srv.rc_resume()
+            q = wait_ptr()
+            ok('R3 서버와 함께 사라진 서버 몫 RC = 시작 때 다시 띄움 · 새 RC_OWN', why.startswith('다시 켬') and alive(q) and json.load(open(srv.RC_OWN, encoding='utf-8'))['pid'] == q, f'{why} {q}')
+            os.replace(pointer, pointer + '.x')             # RC 기록(bridge-pointer)이 아직 없는 때 = 막 띄운 직후
+            ok('R4 막 띄운 서버 몫 RC 가 돌면 폰 단추·rc_up = 새로 안 띄움', srv.rc_start({}) == {'ok': True, 'started': False} and srv.rc_resume() == 'RC 돎')
+            os.replace(pointer + '.x', pointer)
+            if q:
+                srv.rc_kill(q)
+            time.sleep(1)                                   # 켠 지 30초 안에 끝남 = rc_watch 가 gone 을 적는다
+            ok('R5 켠 직후 끝난 RC = rc_watch 가 gone 을 적음 → 다음 시작 때 안 띄움', bool(json.load(open(srv.RC_OWN, encoding='utf-8')).get('gone'))
+               and srv.rc_resume().startswith('서버가 돌던 중에'))
+            dummy = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'])
+            time.sleep(0.3)
+            json.dump({'pid': dummy.pid, 'start': srv.proc_start(dummy.pid), 'at': int(time.time())}, open(srv.RC_OWN, 'w', encoding='utf-8'))
+            first = srv.rc_seen_tick()
+            dummy.kill()
+            dummy.wait(5)
+            ok('R6 5분 순찰 = 살아 있으면 봄 · 본 RC 가 끝나면 gone(한 번만)', first == 'alive' and srv.rc_seen_tick() == 'gone' and srv.rc_seen_tick() is None
+               and bool(json.load(open(srv.RC_OWN, encoding='utf-8')).get('gone')), first)
+            os.environ.pop('BRAIN_RC_BIN', None)
+            if os.path.exists(pointer):
+                os.remove(pointer)
         finally:
             for q, st in fakes:                     # 시작 시각이 같을 때만(pid 가 다시 쓰였으면 남의 것)
                 if st and srv.proc_start(q) == st:

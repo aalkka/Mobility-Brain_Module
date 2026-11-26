@@ -88,19 +88,23 @@ def judge_serve(sv, port):
     return NOT, "serve 없음"
 
 
-def task_actions():
-    """예약 «외부뇌 서버»의 동작 [{Execute, Arguments, WorkingDirectory}] · 없으면 [] · 못 읽으면 None."""
+def task_info():
+    """예약 «외부뇌 서버»의 (동작 [{Execute, Arguments, WorkingDirectory}], 켜진 로그온 트리거가 있나) · 예약 없으면 ([], False) · 못 읽으면 (None, None)."""
     cmd = ("$t = Get-ScheduledTask -TaskName '%s' -ErrorAction SilentlyContinue; "
-           "if ($t) { @($t.Actions | Select-Object Execute,Arguments,WorkingDirectory) | ConvertTo-Json -Compress } else { '[]' }" % TASK)
+           "if ($t) { $l = @($t.Triggers | Where-Object { $_.Enabled -and $_.CimClass.CimClassName -eq 'MSFT_TaskLogonTrigger' }).Count -gt 0; "
+           "@{a = @($t.Actions | Select-Object Execute,Arguments,WorkingDirectory); l = $l} | ConvertTo-Json -Compress -Depth 4 } "
+           "else { '{\"a\":[],\"l\":false}' }" % TASK)
     try:
         r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd], capture_output=True, timeout=15, creationflags=NOWIN)
-        d = json.loads(r.stdout.decode("utf-8", "replace").strip() or "[]")
-    except (OSError, subprocess.TimeoutExpired, ValueError):
-        return None
-    return d if isinstance(d, list) else [d]
+        d = json.loads(r.stdout.decode("utf-8", "replace").strip() or "{}")
+        a = d["a"]
+    except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError):
+        return None, None
+    return (a if isinstance(a, list) else [a]), bool(d.get("l"))
 
 
-def judge_task(actions, vault):
+def judge_task(actions, vault, logon=None):
+    """logon = 켜진 로그온 트리거가 있나(None = 안 잼). 없으면 재부팅 뒤 로그인해도 15분 반복이 돌 때까지 서버가 없다(11-27 · 등록 대본보다 옛 예약)."""
     if actions is None:
         return UNKNOWN, "예약 작업을 못 읽음"
     if not actions:
@@ -108,6 +112,8 @@ def judge_task(actions, vault):
     want = os.path.normcase(os.path.join(conf.vault_of(vault), ".claude", "skills", "mobility", "scripts", "server.py"))
     for a in actions:
         if want in os.path.normcase(str((a or {}).get("Arguments") or "")):
+            if logon is False:
+                return NOT, "예약 «%s»에 로그온 트리거 없음(옛 등록) — 등록 대본(-Task)을 다시 돌린다" % TASK
             return DONE, "예약이 이 볼트 서버를 띄움"
     return NOT, "예약 «%s»이 다른 볼트를 가리킴 — 이 볼트로 바꾸려면 등록 대본(-Task)" % TASK
 
@@ -161,7 +167,8 @@ def measure(item, vault=None):
             return NOT, "Tailscale 이 없음(먼저 설치)"
         return judge_serve(ts_json("serve", "status"), conf.port(vault))
     if item == "task":
-        return judge_task(task_actions(), vault)
+        actions, logon = task_info()
+        return judge_task(actions, vault, logon)
     if item == "alive":
         return judge_alive(conf.port(vault))
     if item == "power":

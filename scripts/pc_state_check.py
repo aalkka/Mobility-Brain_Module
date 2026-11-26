@@ -75,6 +75,8 @@ def main():
     act = lambda v: [{"Execute": "pyw.exe", "Arguments": '-3 "%s"' % os.path.join(v, ".claude", "skills", "mobility", "scripts", "server.py"), "WorkingDirectory": v}]  # noqa: E731
     split("예약", P.judge_task(act(mine), mine), P.judge_task(act(other), mine), P.judge_task(None, mine))
     ok("예약 없음 = 안 됨", P.judge_task([], mine)[0] == 1)
+    ok("로그온 트리거 없음(옛 등록) = 안 됨 · 있음 = 됨", P.judge_task(act(mine), mine, False)[0] == 1 and "로그온" in P.judge_task(act(mine), mine, False)[1]
+       and P.judge_task(act(mine), mine, True)[0] == 0)
     port = free_port()
     srv = http.server.HTTPServer(("127.0.0.1", port), H401)
     threading.Thread(target=srv.serve_forever, daemon=True).start()

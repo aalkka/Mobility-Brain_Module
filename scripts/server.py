@@ -86,6 +86,7 @@
   POST /v1/rc                           # Remote Control 켜기(고정 명령 · 폰이 준 값은 안 쓴다 · 이미돌면 안 띄움 · 간격·하루 상한)
   (5분 순찰 = Claude 데스크톱 앱 로그인이 풀리면 폰에 «Claude 다시 로그인 필요» 한 번 · 11-20 · 기록 = _index/server/login-alert.json)
   (새벽 5시 순찰 = RC 다시 켜기 · 11-18 — 서버가 띄운 RC 이고 2시간 활동 없고 자식 세션이 안 일할 때만 자식째 끄고 다시 띄움 · 결과 = _index/server/rc-night.json)
+  (시작 때 한 번 = RC 되살리기 · 11-27 — 서버가 띄운 RC 가 서버와 함께 사라졌으면(재부팅·로그오프·충돌) 다시 띄움 · 서버가 RC 죽음을 봤으면 안 함)
 """
 import _socket
 import datetime
@@ -516,6 +517,7 @@ def rc_watch(p):
     except subprocess.TimeoutExpired:
         return log(f'RC {RC_WATCH}초 살아 있음 기록={"있음" if rc_state()["up"] else "없음"}')
     core_api.rc_set('failed')                   # 폰 단추 = 회색 «켜기 실패 — PC rc.log»(계정이 auto 모드를 못 쓰는 등 · 10분 뒤 다시 잼)
+    rc_seen_tick()                              # 죽은 것을 봄 = 다음 시작 때 되살리지 않음
     log(f'RC 일찍 끝남 코드={code} · rc.log 를 볼 것')
 
 
@@ -565,7 +567,8 @@ def trim_rc_log():
 def rc_start(_b):
     """폰 단추 → Remote Control 켜기. 고정 명령 · 작업 폴더 = 볼트 · 창 없음 · 이미 돌면 안 띄움(ADR-037). 폰이 준 값은 안 읽는다."""
     with RC_LOCK:
-        if rc_state()['up']:
+        own = rc_own_load()
+        if rc_state()['up'] or (own and rc_own_alive(own)):     # 서버가 막 띄워 RC 기록(bridge-pointer)이 아직 없을 때도(시작 때 되살리기 · 재시작 뒤 rc_up 과 겹침)
             return {'ok': True, 'started': False}
         day = time.strftime('%Y-%m-%d')
         if _rc['day'] != day:
@@ -636,8 +639,95 @@ def rc_launch(cmd, env):
     except OSError:
         pass
     log(f'RC 켬 pid={p.pid}')
+    _rc_seen['pid'] = p.pid                     # 이 서버가 띄움 = 살아 있는 것을 봄(죽으면 순찰·rc_watch 가 gone 을 적는다)
     threading.Thread(target=rc_watch, args=(p,), daemon=True).start()
     return p
+
+
+# ───────── RC 되살리기(11-27) ─────────
+# 11-26 23:43 윈도우 업데이트(Dism.exe)가 PC 를 다시 켰다. 재시작 뒤 다시 세팅(restart.py after)은 제가 건 재시작(before.json)만 보므로
+# 서버가 띄운 RC 가 돌아오지 않았다(incident-2026-11-27). 서버가 «RC 가 죽는 것을 봤나»를 RC_OWN 의 gone 으로 남기고,
+# 시작 때 gone 이 없는데 RC 가 없으면 = 서버와 함께 사라짐(재부팅·로그오프·충돌) → 다시 띄운다. gone 이 있으면 = 서버가 돌던 중에 끝남(끔·실패) → 안 띄운다.
+_rc_seen = {'pid': None}                            # 이 서버가 살아 있는 것을 본 서버 몫 RC pid — 본 적 없으면 죽어도 gone 을 안 적는다(재부팅 뒤 새 서버)
+
+
+def rc_own_load():
+    try:
+        with open(RC_OWN, encoding='utf-8') as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) and d.get('pid') else None
+    except (OSError, ValueError):
+        return None
+
+
+def rc_own_alive(d):
+    """RC_OWN 의 RC 가 지금 살아 있나 — pid 와 시작 시각이 같을 때만(pid 는 다시 쓰인다)"""
+    try:
+        st = proc_start(int(d['pid']))
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return False
+    return st is not None and str(st) == str(d.get('start'))
+
+
+def rc_seen_tick():
+    """순찰(5분)·RC 일찍 끝남 — 서버 몫 RC 가 살아 있으면 «봄», 이 서버가 살아 있는 것을 봤는데 이제 없으면 RC_OWN 에 gone 을 적는다.
+    돌려줌 = 'alive' | 'gone'(이번에 적음) | None(기록 없음 · 이미 gone · 본 적 없음)"""
+    d = rc_own_load()
+    if not d or d.get('gone'):
+        return None
+    if rc_own_alive(d):
+        _rc_seen['pid'] = d['pid']
+        return 'alive'
+    if _rc_seen['pid'] != d['pid']:
+        return None
+    d['gone'] = int(time.time())
+    try:
+        with open(RC_OWN, 'w', encoding='utf-8') as f:
+            json.dump(d, f)
+    except OSError:
+        return None
+    log(f"RC 끝남 봄 pid={d['pid']} — 다음 시작 때 되살리지 않음")
+    return 'gone'
+
+
+def rc_resume_why(own, up, session):
+    """순수 판정 — 시작 때 RC 를 되살릴까. own = RC_OWN 기록 · up = 이 볼트 RC 가 돎 · session = 이 서버의 세션 번호(모르면 None).
+    돌려줌 = '' (되살림) | 안 하는 까닭"""
+    if session == 0:
+        return '세션 0(로그인 전 서버) — 로그인 뒤 서버가 함'
+    if up:
+        return 'RC 돎'
+    if not own:
+        return '서버가 띄운 RC 기록 없음'
+    if own.get('gone'):
+        return '서버가 돌던 중에 RC 가 끝남(끔·실패) — 안 띄움'
+    if rc_own_alive(own):
+        return 'RC 돎'
+    return ''
+
+
+def rc_resume():
+    """서버 시작 때 한 번(뒤 스레드) — 서버가 띄운 RC 가 서버와 함께 사라졌으면 rc_start 와 같은 길(구독·로그인 확인 → 띄움)로 다시 띄운다. 결과는 서버 로그 한 줄."""
+    try:
+        import server_swap
+        session = server_swap.session_of(os.getpid())
+    except Exception:  # noqa: BLE001 — 세션을 모르면 사용자 세션으로 친다
+        session = None
+    with RC_LOCK:
+        why = rc_resume_why(rc_own_load(), rc_state()['up'], session)
+        if not why:
+            env = rc_env()
+            try:
+                p = rc_launch(rc_cmd(env), env)
+                why = f'다시 켬 pid={p.pid}'
+            except Bad as e:
+                why = f'못 켬 — {e.msg}'
+            except OSError as e:
+                why = f'못 켬 — {type(e).__name__}: {e}'
+    if session != 0:
+        rc_seen_tick()                          # 손 RC·이미 도는 RC 도 «봄»에 넣어 둔다
+    log(f'RC 되살리기 {why}')
+    return why
 
 
 def rc_info():
@@ -4556,6 +4646,10 @@ def main():
                 except Exception as e:  # noqa: BLE001 — 순찰이 이것 때문에 멈추지 않게
                     log(f'RC 새벽 순찰 오류 {type(e).__name__}: {e}')
                 try:
+                    rc_seen_tick()
+                except Exception as e:  # noqa: BLE001
+                    log(f'RC 봄 순찰 오류 {type(e).__name__}: {e}')
+                try:
                     login_tick()
                 except Exception as e:  # noqa: BLE001
                     log(f'로그인 순찰 오류 {type(e).__name__}: {e}')
@@ -4566,6 +4660,13 @@ def main():
             if _net['job'] is None:
                 refresh_ssid()          # 핑이 SSID 를 기다리지 않게 읽어 둔다(ssid() · 10분 안이면 그 값)
     threading.Thread(target=sweep, daemon=True).start()
+    if not os.environ.get('BRAIN_SERVER_PORT'):      # 시험 서버는 RC 를 되살리지 않는다(시험은 함수를 직접 부름)
+        def resume():
+            try:
+                rc_resume()
+            except Exception as e:  # noqa: BLE001 — 되살리기가 서버를 멈추지 않게
+                log(f'RC 되살리기 오류 {type(e).__name__}: {e}')
+        threading.Thread(target=resume, daemon=True, name='rc-resume').start()
     threading.Thread(target=push_watch, daemon=True, name='push-watch').start()     # 즉시 알림 살피기(설정 push 가 없으면 아무것도 안 잼)
     bus_start()
     srv.serve_forever()

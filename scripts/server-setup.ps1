@@ -67,9 +67,21 @@ if ($Task) {
         $t = New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(5) -RepetitionInterval (New-TimeSpan -Minutes 15)
         # 로그온 때(ARSO 든 손 로그인이든) 바로 사용자 세션 서버 — 로그인 전 서버(세션 0 · S4U)가 있으면 server.py 가 시작할 때 넘겨받음(server_swap.take_over · 이 사용자 한정 로그온 트리거는 관리자 불필요 · 11-13 잼)
         $t2 = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
-        Register-ScheduledTask -TaskName $name -Action $a -Trigger @($t, $t2) -Settings $s -Force -Description '외부뇌: 폰이 PC 볼트에 닿는 문(제공·검색·폰 기록). 127.0.0.1 만 · 밖은 Tailscale.' | Out-Null
-        Start-ScheduledTask -TaskName $name
-        Write-Output "예약 등록 · 서버 127.0.0.1:$port"
+        # 실패를 «등록»으로 찍지 않는다(11-27 · 관리자 창에서 만든 예약은 사용자가 덮지 못해 0x80070005 인데 «예약 등록»이 나왔다)
+        $reg = $true
+        try {
+            Register-ScheduledTask -TaskName $name -Action $a -Trigger @($t, $t2) -Settings $s -Force -Description '외부뇌: 폰이 PC 볼트에 닿는 문(제공·검색·폰 기록). 127.0.0.1 만 · 밖은 Tailscale.' -ErrorAction Stop | Out-Null
+        } catch {
+            $reg = $false
+            $code = 1
+            if ("$($_.FullyQualifiedErrorId) $($_.Exception.Message)" -match '0x80070005|denied|거부') {
+                Write-Output "⚠ 예약 «$name» 을 못 고침 — 관리자 창에서 만든 예약이라 이 사용자는 읽기만 됨. 관리자 PowerShell 에서 한 번: Unregister-ScheduledTask -TaskName '$name' -Confirm:`$false — 그 뒤 이 대본(-Task)을 보통 창에서 다시"
+            } else {
+                Write-Output "⚠ 예약 등록 실패 — $($_.Exception.Message)"
+            }
+        }
+        Start-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue      # 못 고쳤어도 옛 예약으로 서버는 띄운다(이 볼트 서버인 것은 위에서 잼)
+        if ($reg) { Write-Output "예약 등록 · 서버 127.0.0.1:$port" }
     }
 }
 if ($Serve) {
