@@ -29,7 +29,8 @@ def src(f):
     return os.path.join(MOD if f in MOD_FILES else SYS, f)
 
 
-MOD_FILES = ('server.py', 'alarms.py', 'core_api.py', 'pair.py', 'ready.py', 'qr.py', 'conf.py')     # 11-17 짝짓기·준비 목록·감싸개
+HAS_TW = os.path.isfile(os.path.join(MOD, 'tabwork.py'))     # 작업 모드 대본이 안 실린 판에서는 그 칸을 «묻기»로만 잰다
+MOD_FILES = ('server.py', 'alarms.py', 'core_api.py', 'pair.py', 'ready.py', 'qr.py', 'conf.py', 'notechat_route.py') + (('tabwork.py',) if HAS_TW else ()) + ('vaultwatch.py', 'pdfprint.py')     # 11-17 짝짓기·준비 목록·감싸개
 fails = []
 
 
@@ -178,6 +179,14 @@ def main():
         j = json.loads(call(port, tok, 'GET', '/v1/approve')[2])
         ok('명령 승인 대기 셈(pending · 12시간 안만)', j['waiting'] == 2 and j['runs'][0]['bundles'] == 1
            and j['runs'][0]['cmds'] == [{'id': 1, 'purpose': '시험 명령', 'age_min': 2}], j)
+        cd2 = os.path.join(s, '_index', 'bigboss', 'r2', 'commands')    # pending/ 없이 명령만 올린 run 도 센다(11-21 · 옛 판은 통째로 건너뜀)
+        os.makedirs(cd2)
+        with open(os.path.join(cd2, '01-c.json'), 'w', encoding='utf-8') as f:
+            json.dump({'purpose': '명령만', 'reason': 'x', 'shell': 'powershell', 'cwd': v, 'cmd': 'Write-Output hi', 'timeout': 600,
+                       'added_at': int(time.time()) - 60, 'state': 'pending'}, f, ensure_ascii=False)
+        j = json.loads(call(port, tok, 'GET', '/v1/approve')[2])
+        ok('명령만 올린 run 도 셈(pending/ 없음)', j['waiting'] == 3 and [r['run'] for r in j['runs']] == ['r1', 'r2'] and j['runs'][1]['bundles'] == 0, j)
+        shutil.rmtree(os.path.join(s, '_index', 'bigboss', 'r2'))
         ok('명령 끝점 run·id 꼴 막음', call(port, tok, 'GET', '/v1/approve/command?run=' + urllib.parse.quote('../x') + '&id=1')[0] == 400
            and call(port, tok, 'GET', '/v1/approve/command?run=r1&id=x')[0] == 400 and call(port, tok, 'GET', '/v1/approve/result?run=r1')[0] == 400)
         ap_src = os.path.join(SYS, 'hooks', 'approve', 'approve.py') if os.path.isfile(os.path.join(SYS, 'hooks', 'approve', 'approve.py')) else os.environ.get('APPROVE_SRC')
@@ -372,6 +381,27 @@ def main():
         c, _, b = call(port, tok, 'POST', '/v1/schedule/check', {'file': '2_지식/일정/내-일정.md', 'line': want, 'done': True})
         ok('체크', c == 200 and want.replace('- [ ]', '- [x]', 1) in open(os.path.join(v, '2_지식', '일정', '내-일정.md'), encoding='utf-8').read(), b.decode()[:100])
         ok('바뀐 줄 체크 409', call(port, tok, 'POST', '/v1/schedule/check', {'file': '2_지식/일정/내-일정.md', 'line': want, 'done': True})[0] == 409)
+        # 폰 캘린더 병합 — 기준 판 없이 온 글은 파일을 통째로 다시 넣지 않는다(11-24 내-일정 겹침: 머리·일정 23줄이 두 번)
+        mp = os.path.join(v, '2_지식', '일정', '내-일정.md')
+        pc0 = open(mp, encoding='utf-8', newline='').read()
+        stale = '---\ntitle: 내 일정\nupdated: 2099-01-01\n---\n# 내 일정\n\n- [x] 2099-01-10 (토) 10:00 앞\n- [ ] 2099-01-12 (월) 폰에서 적음 ^my-a1\n- [ ] 2099-01-20 (화) 뒤\n\n## 메모\n- 일정 아님\n'
+        c, _, b = call(port, tok, 'POST', '/v1/schedule/merge', {'path': '2_지식/일정/내-일정.md', 'base': '', 'text': stale})
+        got = open(mp, encoding='utf-8', newline='').read()
+        gl = got.split('\n')
+        ok('기준 판 없는 병합 — 없는 일정 줄만 한 줄', c == 200 and json.loads(b)['took'] == 1 and len(gl) == len(pc0.split('\n')) + 1 and got.count('폰에서 적음') == 1, b.decode()[:120])
+        ok('기준 판 없는 병합 — 머리·제목·일정이 안 겹침', got.count('title: 내 일정') == 1 and got.count('# 내 일정') == 1 and got.count(' 앞') == 1 and got.count('가운데') == 1 and 'updated: 2099-01-01' not in got)
+        ok('기준 판 없는 병합 — 폰 글의 앞 줄 뒤에', gl.index('- [ ] 2099-01-12 (월) 폰에서 적음 ^my-a1') == [i for i, s in enumerate(gl) if s.endswith(' 앞')][0] + 1)
+        ok('기준 판 없는 병합 — 체크 칸만 다르면 PC 판', json.loads(b)['dropped'] == 1 and '- [ ] 2099-01-10 (토) 10:00 앞' in gl)
+        c, _, b = call(port, tok, 'POST', '/v1/schedule/merge', {'path': '2_지식/일정/내-일정.md', 'base': '', 'text': stale})
+        ok('기준 판 없는 병합 — 다시 보내도 그대로', c == 200 and json.loads(b)['took'] == 0 and open(mp, encoding='utf-8', newline='').read() == got)
+        edit = got.replace('폰에서 적음', '폰에서 고침')
+        c, _, b = call(port, tok, 'POST', '/v1/schedule/merge', {'path': '2_지식/일정/내-일정.md', 'base': got, 'text': edit})
+        ok('기준 판 있는 병합은 그대로(바꾼 줄만)', c == 200 and json.loads(b)['took'] == 1 and open(mp, encoding='utf-8', newline='').read() == edit, b.decode()[:120])
+        c, _, b = call(port, tok, 'POST', '/v1/schedule/merge', {'path': '2_지식/일정/폰이-만든.md', 'base': '', 'text': '# 폰이 만든\n\n- [ ] 2099-02-01 (일) 새 파일\n'})
+        ok('PC 에 없는 파일은 폰 글 그대로 만듦', c == 200 and open(os.path.join(v, '2_지식', '일정', '폰이-만든.md'), encoding='utf-8', newline='').read() == '# 폰이 만든\n\n- [ ] 2099-02-01 (일) 새 파일\n')
+        os.remove(os.path.join(v, '2_지식', '일정', '폰이-만든.md'))
+        with open(mp, 'w', encoding='utf-8', newline='') as f:   # 아래 알림 칸들이 보던 판으로
+            f.write(pc0)
         # 알림 — 설정 노트를 요청 때마다 읽는다 · 틀린 값은 기본값으로 울리고 알린다
         app0 = json.loads(call(port, tok, 'GET', '/v1/ping')[2]).get('app')      # 앱이 아직 한 번도 안 당긴 때(아래 11-13 칸에서 봄)
         near = (datetime.date.today() + datetime.timedelta(days=20)).isoformat()
@@ -674,7 +704,7 @@ def main():
             f.write(json.dumps({'ts': '2026-11-13T18:25:03', 'action': 'collect.lms', 'code': 0}) + '\n')
         os.makedirs(os.path.join(v, '1_수집', '받은함', '빈 폴더 시험'))
         put('1_수집/받은함/비밀 메모.md', '---\nsensitive: true\n---\n비밀\n')
-        os.makedirs(os.path.join(v, '0_작업', '일', '외부뇌', '시험작업'))
+        os.makedirs(os.path.join(v, '0_작업', '일', '시험주제', '시험작업'))
         put('0_작업/일/시험주제/시험작업/작업.md', '---\ntitle: 시험작업\n---\n# 시험작업\n')
         srv_home = lambda: json.loads(call(port, tok, 'GET', '/v1/home')[2])
         hm = srv_home()
@@ -687,13 +717,13 @@ def main():
         ok('받은함에 없는 이름·민감·위로 나가기 = 404', all(call(port, tok, 'POST', '/v1/inbox/do', {'name': n})[0] == 404 for n in ('없음.md', '비밀 메모.md', '../2_지식/일/보통.md', 3)))
         c, _, b = call(port, tok, 'POST', '/v1/work/finish', {'path': '0_작업/일/시험주제/시험작업'})
         batch = json.loads(b).get('batch') if c == 200 else None
-        ok('작업 끝냄 = 비움(묶음 id) · 장부 by = phone', bool(batch) and not os.path.exists(os.path.join(v, '0_작업', '일', '외부뇌', '시험작업', '작업.md'))
+        ok('작업 끝냄 = 비움(묶음 id) · 장부 by = phone', bool(batch) and not os.path.exists(os.path.join(v, '0_작업', '일', '시험주제', '시험작업', '작업.md'))
            and '"by": "phone"' in open(os.path.join(s, 'ledger', 'ops.jsonl'), encoding='utf-8').read().replace('"by":"phone"', '"by": "phone"'), b.decode()[:160])
         ok('작업 끝냄 = 0_작업 밖 403 · 위로 나가기 400', call(port, tok, 'POST', '/v1/work/finish', {'path': '2_지식/일/보통.md'})[0] == 403
            and call(port, tok, 'POST', '/v1/work/finish', {'path': '0_작업/../2_지식'})[0] == 400)
         ok('되돌리기 = 폰이 받지 않은 묶음 404', call(port, tok, 'POST', '/v1/undo', {'batch': 'b000000-000000-0000'})[0] == 404)
         c, _, b = call(port, tok, 'POST', '/v1/undo', {'batch': batch})
-        ok('되돌리기 = 되살림 · 같은 묶음 두 번째는 404', c == 200 and os.path.exists(os.path.join(v, '0_작업', '일', '외부뇌', '시험작업', '작업.md'))
+        ok('되돌리기 = 되살림 · 같은 묶음 두 번째는 404', c == 200 and os.path.exists(os.path.join(v, '0_작업', '일', '시험주제', '시험작업', '작업.md'))
            and call(port, tok, 'POST', '/v1/undo', {'batch': batch})[0] == 404, b.decode()[:120])
 
         # ── 11-17 화면 쓰기(Q3 «C»): 형식 화면 내 칸·칸 너비 = 그 파일에(brain-base setMine·setCols 규칙) · 모듈 화면 행위 = 그 모듈 것만 ──
@@ -764,6 +794,40 @@ def main():
         ok('금지 = 3_시스템·위로·범위 뿌리·숨김(_lms)·점 자리·민감·모르는 일 → 4xx · 보통.md 그대로', all(400 <= x < 500 for x in bad) and os.path.exists(A('2_지식', '일', '보통.md')), str(bad))
         fl = json.loads(call(port, tok, 'GET', '/v1/folders')[2])['items']
         ok('옮길 자리 = 범위 안 폴더(숨김 _lms·점 자리 없음)', '2_지식/일/옮길곳' in fl and not any('_lms' in x or '/.' in x or x.startswith(('3_시스템', '.')) for x in fl), str(fl)[:160])
+
+        # ── 11-23 폰 «새 폴더»(op=mkdir) · 이름 바꾸기 확장자 지킴 ──
+        c, _, b = fo({'op': 'mkdir', 'dst': '2_지식/일/폰새폴더'})
+        mb = json.loads(b).get('batch') if c == 200 else None
+        led = open(os.path.join(s, 'ledger', 'ops.jsonl'), encoding='utf-8').read().splitlines()
+        ok('새 폴더 = fileops mkdir(장부 by=phone) · 묶음 · /v1/folders 에 보임', c == 200 and os.path.isdir(A('2_지식', '일', '폰새폴더')) and mb and json.loads(b).get('dst') == '2_지식/일/폰새폴더'
+           and any('"mkdir"' in x and '"phone"' in x and '폰새폴더' in x for x in led) and '2_지식/일/폰새폴더' in json.loads(call(port, tok, 'GET', '/v1/folders')[2])['items'], b.decode()[:160])
+        c2 = fo({'op': 'mkdir', 'dst': '2_지식/일/폰새폴더'})[0]
+        c4 = fo({'op': 'mkdir', 'dst': '2_지식/일/보통.md'})[0]
+        ok('이미 있음 = 409(같은 폴더 · 같은 이름 파일)', c2 == 409 and c4 == 409, f'{c2} {c4}')
+        far = [fo({'op': 'mkdir', 'dst': x})[0] for x in ('3_시스템/새', '새폴더', '2_지식', '1_수집/_lms/새', '2_지식/_색인/새', '.obsidian/새', '../새', '2_지식/없는곳/새')]
+        ok('범위 밖 = 3_시스템·볼트 뿌리·범위 뿌리 자체·숨김·점 자리·위로 → 403/400 · 없는 부모 = 404 · 안 만듦', far[:7] and all(x in (400, 403) for x in far[:7]) and far[7] == 404
+           and not os.path.exists(A('3_시스템', '새')) and not os.path.exists(A('새폴더')) and not os.path.exists(A('2_지식', '없는곳')), str(far))
+        names = ('', ' ', '.숨김', '..', 'a\\b', 'a:b', 'a?b', 'a*b', 'a|b', 'a"b', 'a<b', '끝점.', '끝공백 ', ' 앞공백', 'CON', 'nul.txt', 'x' * 121)
+        before = sorted(os.listdir(A('2_지식', '일')))
+        nb = [fo({'op': 'mkdir', 'dst': '2_지식/일/' + x})[0] for x in names] + [fo({'op': 'mkdir', 'dst': None})[0], fo({'op': 'mkdir', 'dst': '2_지식/일/'})[0]]
+        ok('이름 거절 = 빈 이름·점 시작·..·역슬래시·윈도 금지 글자·끝 점/공백·장치 이름·너무 김 → 400 · 안 만듦', all(x == 400 for x in nb)
+           and sorted(os.listdir(A('2_지식', '일'))) == before, str(nb))
+        c, _, b = call(port, tok, 'POST', '/v1/undo', {'batch': mb})
+        ok('새 폴더 되돌리기 = 빈 폴더 치움', c == 200 and not os.path.exists(A('2_지식', '일', '폰새폴더')), b.decode()[:120])
+        c, _, b = fo({'op': 'mkdir', 'dst': '1_수집/폰폴더'})
+        ok('1_수집 안 새 폴더도 됨(폰 범위 = /v1/folders 와 같음)', c == 200 and os.path.isdir(A('1_수집', '폰폴더')), f'{c} {b.decode()[:120]}')
+        with open(A('1_수집', '폰폴더', 'Notes_1.sdocx'), 'wb') as f:
+            f.write(b'PK\x03\x04sdocx')
+        c, _, b = fo({'op': 'mv', 'src': '1_수집/폰폴더/Notes_1.sdocx', 'dst': '1_수집/폰폴더/Hw4'})
+        c2, _, b2 = fo({'op': 'mv', 'src': '1_수집/폰폴더/Hw4.sdocx', 'dst': '1_수집/폰폴더/Hw5.pdf'})
+        c3, _, b3 = fo({'op': 'mv', 'src': '1_수집/폰폴더/Hw5.pdf.sdocx', 'dst': '1_수집/폰폴더/Hw6.SDOCX'})
+        ok('.sdocx 이름 바꾸기 → 확장자 유지(빠지면 붙임 · 바꾸면 원래 것을 덧붙임 · 대소문자도 원래 글자로)', c == 200 and json.loads(b).get('dst') == '1_수집/폰폴더/Hw4.sdocx'
+           and c2 == 200 and json.loads(b2).get('dst') == '1_수집/폰폴더/Hw5.pdf.sdocx' and c3 == 200 and json.loads(b3).get('dst') == '1_수집/폰폴더/Hw6.sdocx'
+           and not os.path.exists(A('1_수집', '폰폴더', 'Hw4')), f'{b.decode()[:100]} {b2.decode()[:100]} {b3.decode()[:100]}')
+        os.makedirs(A('2_지식', '일', '옮길곳2'), exist_ok=True)
+        c, _, b = fo({'op': 'mv', 'src': '1_수집/폰폴더/Hw6.sdocx', 'dst': '2_지식/일/옮길곳2'})
+        c2, _, b2 = fo({'op': 'mv', 'src': '2_지식/일/옮길곳2', 'dst': '2_지식/일/옮길곳3'})
+        ok('옮기기·폴더 이름 바꾸기는 확장자 손대지 않음', c == 200 and json.loads(b).get('dst') == '2_지식/일/옮길곳2/Hw6.sdocx' and c2 == 200 and os.path.isdir(A('2_지식', '일', '옮길곳3')), f'{b.decode()[:100]} {b2.decode()[:100]}')
 
         # ── 11-16 민감 노트 보기 스위치(config phone_sensitive · 없으면 «show» = 사용자 C선택 · «hide» = 옛 동작 · 모르는 값 = 숨김) ──
         spec = importlib.util.spec_from_file_location('srv_ps', os.path.join(s, 'server.py'))
@@ -836,6 +900,12 @@ def main():
         t2 = tag_of('1_수집/배움/표.xlsx')
         c, _, b = put_bin('1_수집/배움/표.xlsx', blob2, t2)
         ok('1_수집 원본도 덮음(사람이 보호를 푼 고침 · 옛 판 휴지통)', c == 200 and sha(A('1_수집', '배움', '표.xlsx')) == hashlib.sha256(blob2).hexdigest(), b.decode()[:120])
+        os.makedirs(A('1_수집', '필기'), exist_ok=True)     # 11-23: 삼성노트 .sdocx 그 자리 필기 — 같은 길(옛 판 휴지통)
+        with open(A('1_수집', '필기', '노트.sdocx'), 'wb') as f:
+            f.write(blob1)
+        c, _, b = put_bin('1_수집/필기/노트.sdocx', blob2, tag_of('1_수집/필기/노트.sdocx'))
+        tsd = [os.path.join(d, f) for d, _, fs in os.walk(A('.trash')) for f in fs if f == '노트.sdocx'] if os.path.isdir(A('.trash')) else []
+        ok('.sdocx 덮음 = 새 바이트 · 옛 판 휴지통 1벌', c == 200 and sha(A('1_수집', '필기', '노트.sdocx')) == hashlib.sha256(blob2).hexdigest() and len(tsd) == 1 and sha(tsd[0]) == hashlib.sha256(blob1).hexdigest(), b.decode()[:120])
         c, _, b = put_bin(rel, blob1, tag_of(rel))
         ok('같은 내용 = 200 · 장부 묶음 없음', c == 200 and 'batch' not in json.loads(b), b.decode()[:120])
         cur = tag_of(rel)
@@ -917,6 +987,75 @@ def main():
         ok('줄이 글자 목록 아니면 400', call(port, tok, 'POST', '/v1/ink', {'path': inkp, 'lines': 'x'})[0] == 400)
         ok('열쇠 없으면 막힘', call(port, None, 'POST', '/v1/ink', {'path': inkp, 'lines': [s1]})[0] in (401, 403))
 
+        # ── 11-21 탭 곁창(작업 세션): 시작 → 조각 묻기 · 칩 짐작 · 경로·꼴 거름 — 가짜 실행기(받은 인자를 사건으로 되돌림 · 모델 없음)
+        put('3_시스템/ink/notechat.cjs', 'const a=process.argv.slice(2);const o=x=>process.stdout.write(JSON.stringify(x)+"\\n");'
+            'if(a.includes("--chips")){o({t:"kind",kind:"풀이",why:"가짜"});o({t:"chips",kind:"풀이",chips:["봐줘","힌트만"]});process.exit(0)}'
+            'o({t:"lines",page:1,lines:[{n:1,y0:0,y1:10}]});o({t:"d",s:"L1 "});setTimeout(()=>{o({t:"d",s:"끝"});o({t:"done",session:"s",text:"L1 끝",args:a})},300);')
+        put('2_지식/일/풀이.note', '{"note":1,"id":"n-t","size":[595,842],"bg":null}\n{"page":"p1"}\n')
+        c, _, b = call(port, tok, 'POST', '/v1/notechat', {'note': '2_지식/일/풀이.note', 'chips': True})
+        ok('곁창 칩 = 종류 짐작(모델 없음)', c == 200 and json.loads(b) == {'kind': '풀이', 'chips': ['봐줘', '힌트만'], 'why': '가짜'}, b[:200])
+        c, _, b = call(port, tok, 'POST', '/v1/notechat', {'note': '2_지식/일/풀이.note', 'chip': '봐줘', 'view': '1,0,500'})
+        job = json.loads(b).get('job') if c == 200 else None
+        evs, nxt, t0 = [], 0, time.time()
+        while job and time.time() - t0 < 10:
+            j = json.loads(call(port, tok, 'GET', f'/v1/notechat?job={job}&from={nxt}')[2])
+            evs += j['events']; nxt = j['next']
+            if j['done']:
+                break
+            time.sleep(0.1)
+        dn = [e for e in evs if e['t'] == 'done']
+        ok('곁창 시작 → 조각 묻기 → 끝(사건 차례 그대로 · 인자 = 볼트 상대 노트·칩·보는 자리)', [e['t'] for e in evs] == ['lines', 'd', 'd', 'done'] and dn
+           and dn[0]['args'][dn[0]['args'].index('--note') + 1] == '2_지식/일/풀이.note' and '--view' in dn[0]['args'], evs)
+        bad = [call(port, tok, 'POST', '/v1/notechat', x)[0] for x in ({'note': '../x.note', 'chip': '봐줘'}, {'note': '2_지식/일/없음.note', 'chip': '봐줘'},
+               {'note': '2_지식/일/보통.md'}, {'note': '2_지식/일/풀이.note', 'resume': 'x;y'}, {'note': '2_지식/일/풀이.note', 'view': '1;2'}, {'text': ''})]
+        ok('곁창 거름: 경로·없는 노트·물을 글 없음·대화 id·보는 자리 꼴', bad == [400, 404, 400, 400, 400, 400], bad)
+        ok('곁창 없는 일 = 404 · 열쇠 없으면 막힘', call(port, tok, 'GET', '/v1/notechat?job=zz')[0] == 404
+           and call(port, None, 'POST', '/v1/notechat', {'text': 'x'})[0] in (401, 403))
+        c, _, b = call(port, tok, 'GET', '/v1/notechat/past')
+        ok('지난 대화 목록(엔진 대화만 · 없으면 빈 목록)', c == 200 and isinstance(json.loads(b).get('items'), list), b[:200])
+        # ── 11-22: 탭 곁창 작업 모드 = 폰 명령 승인 요청(run tabwork) · 켜는 길(폰 서명)은 tabwork_check.py ──
+        tsid = '12345678-1234-4234-8234-123456789abc'
+        ok('작업 모드: 처음 = 묻기 · 대화 id 꼴 막음', json.loads(call(port, tok, 'GET', f'/v1/tabwork?session={tsid}')[2]).get('state') == 'ask'
+           and (not HAS_TW or (call(port, tok, 'GET', '/v1/tabwork?session=x')[0] == 400 and call(port, tok, 'POST', '/v1/tabwork/ask', {'session': '../x'})[0] == 400)))
+        if not HAS_TW:
+            ok('작업 모드 대본 없는 판: 요청 = 503 · 끝 = 묻기', call(port, tok, 'POST', '/v1/tabwork/ask', {'session': tsid})[0] == 503
+               and json.loads(call(port, tok, 'POST', '/v1/tabwork/end', {'session': tsid})[2]).get('state') == 'ask')
+        if HAS_TW and ap_src and os.path.isfile(ap_src):
+            c, _, b = call(port, tok, 'POST', '/v1/tabwork/ask', {'session': tsid, 'why': '제목 고쳐 줘'})
+            ok('작업 모드 요청 = 폰 승인 대기(명령 요청 하나)', c == 200 and json.loads(b).get('state') == 'waiting'
+               and any(r['run'] == 'tabwork' for r in json.loads(call(port, tok, 'GET', '/v1/approve')[2])['runs']), b[:200])
+            c, _, b = call(port, tok, 'POST', '/v1/tabwork/end', {'session': tsid})
+            ok('대화 끝 = 묻기 · 대기 요청 닫힘', c == 200 and json.loads(b).get('state') == 'ask'
+               and not any(r['run'] == 'tabwork' for r in json.loads(call(port, tok, 'GET', '/v1/approve')[2])['runs']), b[:200])
+        def nc_args(body):                          # 가짜 실행기가 받은 인자(done 사건)
+            c_, _, b_ = call(port, tok, 'POST', '/v1/notechat', body)
+            jb, t1 = json.loads(b_).get('job') if c_ == 200 else None, time.time()
+            while jb and time.time() - t1 < 10:
+                j_ = json.loads(call(port, tok, 'GET', f'/v1/notechat?job={jb}')[2])
+                d_ = [e for e in j_['events'] if e['t'] == 'done']
+                if d_:
+                    return d_[0]['args']
+                time.sleep(0.1)
+            return None
+        ar = nc_args({'text': '제목 고쳐 줘', 'resume': tsid})
+        ok('승인 표 없는 대화 = 지금과 같음(--work·--mode-note 없음)', ar is not None and '--work' not in ar and '--mode-note' not in ar, ar)
+        if HAS_TW and ap_src and os.path.isfile(ap_src):
+            sys.path.insert(0, s)
+            import tabwork as TWm                   # 가짜 볼트 사본 — 폰 서명 대신 적용기 장부에 run-start 한 줄(서명 길 자체는 tabwork_check.py)
+            TWm.ask(v, {'session': tsid, 'why': '제목'})
+            nn_ = TWm._records(v, tsid)[-1]['nn']
+            with open(os.path.join(s, '_index', 'approve', 'ledger.jsonl'), 'a', encoding='utf-8') as f:
+                f.write(json.dumps({'at': int(time.time()), 'ev': 'run-start', 'run': 'tabwork', 'id': nn_}) + '\n')
+            ar = nc_args({'text': '이어서', 'resume': tsid})
+            ok('승인된 대화 = --work + 바뀐 첫 턴 --mode-note', ar is not None and '--work' in ar and '--mode-note' in ar, ar)
+            ar = nc_args({'text': '또', 'resume': tsid})
+            ok('같은 모드 다음 턴 = --work 만', ar is not None and '--work' in ar and '--mode-note' not in ar, ar)
+            call(port, tok, 'POST', '/v1/tabwork/end', {'session': tsid})
+            ar = nc_args({'text': '끝난 뒤', 'resume': tsid})
+            ok('대화 끝 뒤 = 묻기 + 바뀐 첫 턴 --mode-note', ar is not None and '--work' not in ar and '--mode-note' in ar, ar)
+        ok('작업 모드 길 = 열쇠 없으면 막힘', call(port, None, 'POST', '/v1/tabwork/ask', {'session': tsid})[0] in (401, 403)
+           and call(port, None, 'GET', f'/v1/tabwork?session={tsid}')[0] in (401, 403))
+
         # ── 11-16 sdocx: 폰·탭 공유 받기 = POST /v1/upload?name=&sha256= → 받은함 새 파일(종류 안 가림 · 덮지 않음 · «이름 (2)» · 받은 바이트 그대로 · 경로 거름) ──
         def up(name, data, want=None, t=tok):
             qs = 'name=' + urllib.parse.quote(name) + ('&sha256=' + want if want else '')
@@ -982,6 +1121,31 @@ def main():
         bad_to = {to_: upto('밖.pdf', pd1, to_)[0] for to_ in ('0_작업/필기/아래/', '0_작업/', '2_지식/', '0_작업/필기/../밖/')}
         ok('필기 내보냄 자리 밖(아래 폴더·위·다른 뿌리) = 403/400 · 안 생김', all(x in (400, 403) for x in bad_to.values())
            and not os.path.exists(outp('아래', '밖.pdf')) and not os.path.exists(os.path.join(v, '0_작업', '밖.pdf')), str(bad_to))
+        # ── 11-23 폰 PDF: 내보낸 PDF 자리 = 0_작업/<영역>/<주제>/… (brain-source outdir.ts) · 덮음 · 영역 밖·주제 없음·위로 = 막음 ──
+        c4_, j4_ = upto('노트.pdf', pd1, '0_작업/일/주제A/PDF/')
+        c5_, j5_ = upto('노트.pdf', pd2, '0_작업/일/주제A/PDF')
+        ok('내보낸 PDF = 0_작업/<영역>/<주제>/…/<이름> · 같은 이름 = 덮음', c4_ == 200 and j4_.get('path') == '0_작업/일/주제A/PDF/노트.pdf' and c5_ == 200 and j5_.get('path') == '0_작업/일/주제A/PDF/노트.pdf', f'{c4_} {j4_} {c5_} {j5_}')
+        bad2 = {to_: upto('밖.pdf', pd1, to_)[0] for to_ in ('0_작업/기타/주제/', '0_작업/일/', '0_작업/일/a/../../../밖/', '0_작업/일/.숨은/', '1_수집/일/a/')}
+        ok('내보낸 PDF 자리 밖 = 403/400', all(x in (400, 403) for x in bad2.values()), str(bad2))
+        # ── 11-23 폰 PDF 를 PC 가 만듦: POST /v1/pdf(본문 = HTML) → 헤드리스 인쇄 → 그 자리 · 바깥 주소는 CSP 가 막음 ──
+        def pdf_(name, html, to):
+            req = urllib.request.Request(f'http://127.0.0.1:{port}/v1/pdf?name=' + urllib.parse.quote(name) + '&to=' + urllib.parse.quote(to), data=html.encode('utf-8'), method='POST',
+                                         headers={'Content-Type': 'text/html; charset=utf-8', 'Authorization': 'Bearer ' + tok})
+            try:
+                with urllib.request.urlopen(req, timeout=180) as r:
+                    return r.status, json.loads(r.read() or b'{}')
+            except urllib.error.HTTPError as e:
+                return e.code, json.loads(e.read() or b'{}')
+        import pdfprint as pp_
+        if pp_.browser():
+            doc_ = '<!doctype html><html><head><meta charset="utf-8"><style>@page{size:A4}</style></head><body><h1>한글 제목</h1><table><tr><td>가</td><td>1</td></tr></table><img src="http://127.0.0.1:1/x.png"></body></html>'
+            c6_, j6_ = pdf_('노트.pdf', doc_, '0_작업/일/주제A/PDF/')
+            pb_ = open(os.path.join(v, *'0_작업/일/주제A/PDF/노트.pdf'.split('/')), 'rb').read() if c6_ == 200 else b''
+            ok('PC PDF = /v1/pdf HTML → 0_작업/<영역>/<주제>/…/<이름>.pdf(덮음) · %PDF · 글자 있음', c6_ == 200 and j6_.get('path') == '0_작업/일/주제A/PDF/노트.pdf' and pb_.startswith(b'%PDF') and b'/Font' in pb_, f'{c6_} {j6_} {len(pb_)}')
+            bad3 = [pdf_('밖.pdf', doc_, '0_작업/기타/a/')[0], pdf_('노트.txt', doc_, '0_작업/일/주제A/PDF/')[0], pdf_('빈.pdf', '  ', '0_작업/일/주제A/PDF/')[0]]
+            ok('PC PDF 막음 = 자리 밖 403 · .pdf 아님 400 · 빈 문서 400', bad3 == [403, 400, 400], str(bad3))
+        else:
+            ok('PC PDF — 이 PC 에 크롬·엣지 없음(건너뜀)', True)
         # ── 11-16 큰 파일(사용자 «64mb 제한 없애기»): 상한 = PC 남은 자리(2GB 남김 → 507) · 흘려 받음 · 끊기면 받은 자리부터 이어 받음 ──
         updir = os.path.join(s, '_index', 'server', 'upload')
 
@@ -1594,6 +1758,11 @@ while time.time() < end:
         # 11-20 사용자 «보던 창을 지우고 그 자리를 차지» · «크롬 창이 그대로 남음» — PC 주소 = 새 탭 · 탭 닫기 신호 = 서버가 잰 전경 창
         wb = w1[2].decode('utf-8')
         ok('O5 PC 주소 = 새 탭(paneType=tab) · 쪽이 /open/front 를 물음', f'&file={fq}&paneType=tab' in wb and '/open/front?wait=' in wb)
+        # 11-21: 바깥 주소로 넘기면 크롬이 HTML 해석을 멈춰 그 뒤 <script> 를 안 읽는다 → 넘기기는 맨 끝 대본 하나 · 닫기 대본은 그 앞
+        sc = re.findall(r'<script>(.*?)</script>', wb, re.S)
+        ok('O5b 넘기기(location.replace)는 맨 끝 대본 · 닫기 대본(/open/front)은 그 앞 · 뒤에 대본 없음',
+           len(sc) == 2 and '/open/front' in sc[0] and 'location.replace' not in sc[0] and sc[1].startswith('location.replace(')
+           and wb.rindex('<script>') > wb.rindex('</a>'), [s[:30] for s in sc])
         fr = call(port, None, 'GET', '/open/front?wait=0')
         far = call(port, None, 'GET', '/open/front?wait=0', headers={'X-Forwarded-For': '100.64.0.9'})
         ok('O6 /open/front = 이 PC 요청만 참/거짓 하나(열쇠 없음) · 다른 기기 주소 = 404',

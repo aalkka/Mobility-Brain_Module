@@ -32,8 +32,12 @@
   POST /v1/new      {path, text}        # 새 노트(이미 있으면 409)
   POST /v1/upload?name=&sha256=&size=&offset=  (본문 = 파일 바이트)   # 폰·탭 안드로이드 공유로 받은 파일 → 받은함 새 파일(종류 안 가림 · 같은 이름이면 «이름 (2)» · 덮지 않음 · 받은 바이트 그대로 · 장부) → {path, sha256}
                                         #   흘려 받음(메모리 고정 · 크기 상한 없음 · PC 에 2GB 는 남김 → 507) · 끊기면 받은 앞부분을 남기고 offset 부터 이어 받는다 · 다 안 왔으면 {have}
-  POST /v1/upload?…&to=0_작업/필기/      # 필기 «PDF 로 볼트에 저장»(폰·탭) — 그 폴더의 같은 이름은 옛 판을 휴지통 거쳐 덮음(데스크톱과 같게) · to=2_지식/필기/_첨부/… = 필기에 넣는 사진·PDF(덮지 않음)
+  POST /v1/pdf?name=<이름>.pdf&to=0_작업/<영역>/<주제>/…   # 본문 = 폰이 그린 HTML → PC 헤드리스 브라우저 인쇄(pdfprint) → 그 자리(덮음) → {path} · 폰 «PDF 로 볼트에 저장»·«PDF 로 공유»
+  POST /v1/upload?…&to=0_작업/<영역>/<주제>/…/  # 폰 «PDF 로 볼트에 저장»·«PDF 로 내보내기»(옛 0_작업/필기/ 도) — 그 폴더의 같은 이름은 옛 판을 휴지통 거쳐 덮음(데스크톱과 같게) · to=2_지식/필기/_첨부/… = 필기에 넣는 사진·PDF(덮지 않음)
   GET  /v1/upload?sha256=&size=&name=   # 이어 보낼 자리 {have} · 다 받아 둔 것이면 {path, same} · 받을 자리가 없으면 507
+  POST /v1/notechat {note?, chip?, text?, resume?, kind?, view?} → {job} · {note, chips:true} → {kind, why, chips}   # 탭 곁창(볼트 클로드 · 노트 특화 · notechat_route.py)
+  GET  /v1/notechat?job=&from=N  → {events, next, done} · POST /v1/notechat/stop {job} · GET /v1/notechat/past[?id=]
+  POST /v1/tabwork/ask {session, why} · GET /v1/tabwork?session= · POST /v1/tabwork/end {session}   # 탭 곁창 작업 모드 = 폰 명령 승인 길(tabwork.py · 켜는 근거 = 적용기 장부)
   POST /v1/ink      {path, lines}       # 필기 노트(.note) 덧붙이기 — 줄 이름(머리·쪽·획·기록)이 없는 줄만 끝에 · 없으면 머리 줄부터 새로 → {etag, lines, took}
   GET  /v1/marks?path=&dev=             # 책갈피(11-18) — 그 문서의 손 책갈피(모든 기기 합 − 지운 표) + 기기마다 마지막 본 곳 · 장부 옮김을 따라감 · 민감(숨김 설정)·폰 범위 밖은 403
   POST /v1/marks    {dev, op: add|del|last, path, id?, name?, pos?}   # 그 기기 파일(_index/work/책갈피/<dev>.json)에만 씀 · PC(pc.json)는 brain-base 몫이라 안 받음
@@ -56,7 +60,8 @@
   POST /v1/work/finish {path}          # 홈 «작업» 체크 = 끝냄(데스크톱과 같은 work.finish · 장부 by=phone) → {batch}
   POST /v1/inbox/do {name}             # 홈 «받은함» 줄 단추 = 제안대로(inbox.execute 한 항목)
   POST /v1/undo     {batch}            # 폰이 받은 묶음만 되돌림(work/finish·fileop 이 준 것)
-  POST /v1/fileop   {op, src, dst, base}   # 폰 탐색기 이름 바꾸기·옮기기(op=mv · dst = 새 경로 또는 폴더) · 휴지통으로(op=rm) — fileops(장부·휴지통·링크 고침) · base = 폰이 본 ETag(다르면 409 · 파일만)
+  POST /v1/fileop   {op, src, dst, base}   # 폰 탐색기 이름 바꾸기·옮기기(op=mv · dst = 새 경로 또는 폴더) · 휴지통으로(op=rm) — fileops(장부·휴지통·링크 고침) · base = 폰이 본 ETag(다르면 409 · 파일만) · 파일 이름 바꾸기는 원래 확장자를 언제나 지킴(빠지거나 바뀌면 붙임 · 11-23)
+  POST /v1/fileop   {op: "mkdir", dst}   # 폰 «새 폴더»(11-23) — 폰 범위 안(/v1/folders 와 같은 거름)에만 · 이름 검사(빈 이름·/·\·..·윈도 금지 글자·끝 점/공백) · 이미 있으면 409 · fileops mkdir(장부 by=phone) → {batch, dst}(/v1/undo = 빈 폴더면 치움)
   POST /v1/fileops  {op, items:[{src, base}], dst}   # 여러 개 고르기(11-16) — 한 묶음(되돌리기 한 번)으로 옮기기(op=mv · dst = 폴더)·휴지통으로(op=rm) · 50개까지
                                         #   줄마다 {src, ok, dst | followed(앞 줄이 옮긴 폴더 안·짝 메모라 함께 감) | error} · 안 된 줄이 있어도 나머지는 한다
   GET  /v1/manual                       # 사용자설명서 ```brain-manual``` — 켜진 모듈 설명서 장(데스크톱 brain-base manualChapters 와 같음)
@@ -66,7 +71,9 @@
   POST /v1/diag     {lines}             # 폰 진단 줄 → 서버 로그(노트 이름·글 없음 · 한 번·하루 상한)
   POST /v1/lock     {path, on, id, label}   # 폰·탭이 노트에 입력 중(심장박동 · 마지막 입력 뒤 lock_ttl 초 = 풀림 · on=false = 풂) — 다른 기기가 먼저면 {ok:false, held} · locks.json(훅·데스크톱)
   GET  /v1/locks                        # 지금 걸린 잠금 [{path, label, left}] — Claude Edit·Write 훅이 locks.json 에 걸린 뒤 다시 묻는다(서버가 없으면 막지 않음)
-  POST /v1/watch    {items:[{path, etag}], id, sig, wait}   # 열어 둔 노트의 PC 판·잠금 지켜보기 — 바뀌면 바로 · 아니면 wait 초(25 상한)까지 붙잡음 → {items, locks, sig}
+  POST /v1/watch    {items:[{path, etag}], id, sig, wait}   # 열어 둔 노트의 PC 판·잠금 지켜보기 — 바뀌면 바로 · 아니면 wait 초(25 상한)까지 붙잡음 → {items, locks, sig} · 없어진 노트 = {gone, moved?}(옮긴 자리)
+  POST /v1/changes  {since, wait}      # 볼트 바뀜 버스(11-23 · vaultwatch.py) — 누가 바꿨든 폰 범위 안의 바뀜을 since 뒤로 · 없으면 wait 초(25 상한) 붙잡음 → {seq, dirs, moves:[{src,dst,dir}], reset?}
+                                       #   since 0 = 지금 seq 만 · reset = 폰이 받아 둔 목록을 다 버리고 다시 받는다 · GET /v1/file 404 의 moved = 옮긴 자리(옛 경로로 열 때)
   GET  /v1/approve                      # 폰 승인(11-17): 대기 수·가장 오래·run 별·동결·키 수(묶음 json 을 서버가 셈 · ping 의 approve 칸도 같은 셈)
   GET  /v1/approve/bundle?run=          # 폰에 보낼 볼트 묶음 + 도전값 = 게이트 코어 적용기 approve.py challenge(부를 때마다 새 도전값)
                                         #   &form=bin(앱 판 36~) = 머리 JSON 한 줄 + diff 바이트(gzip) · &have=<폰 화면 all sha> 같으면 머리만(«same»)
@@ -114,6 +121,16 @@ import alarms  # noqa: E402 — 무엇을 언제 울릴지는 알림 모듈이 �
 import core_api  # noqa: E402 — 계약 밖 코어(찾기·주제·기록 보존·RC 상태)는 이 감싸개 한 곳(계획서 §6.1)
 import pair as pairing  # noqa: E402 — 짝짓기·붙은 기기·열쇠 바꾸기(M2)
 import ready  # noqa: E402 — 폰 «준비 목록» 보고(M7)
+import notechat_route  # noqa: E402 — 탭 곁창(볼트 클로드 · 노트 특화 · 11-21)
+try:
+    import tabwork  # noqa: E402 — 탭 곁창 작업 모드(폰 지문 승인 · 11-22)
+except ImportError:                 # 작업 모드 대본이 안 실린 판 — 길은 남기고 «묻기»로만 답한다
+    tabwork = None
+import pdfprint  # noqa: E402 — 폰 «PDF 로 볼트에 저장»·«PDF 로 공유»: 폰이 그린 HTML → 이 PC 헤드리스 브라우저 인쇄(11-23)
+try:
+    import vaultwatch  # noqa: E402 — 볼트 바뀜 버스(11-23 · PC 쪽 바뀜을 폰이 몇 초 안에)
+except ImportError:     # 대본을 골라 복사하는 옛 시험·배포 — 버스 없이 뜬다(폰은 옛 길 = 5분 목록)
+    vaultwatch = None
 core_api.init(HERE)
 
 STATE = os.path.join(HERE, '_index', 'server')
@@ -124,7 +141,7 @@ READ_ROOTS = ('0_작업/', '1_수집/', '2_지식/')  # mf:allow-path  (폰이 �
 DOC_ROOTS = ('3_시스템/설명서/',)                    # 읽기만(파일·링크) — 폰 «설명서»의 장 링크가 열리게(모바일볼트 1-5 · 목록·찾기·쓰기·폰 손에는 안 든다)
 WRITE_ROOTS = ('0_작업/', '2_지식/')  # mf:allow-path  (폰 사람 쓰기 — 데스크톱 편집기 노릇 · fileops 장부 by=phone · 모듈 산출물 아님)
 BIN_ROOTS = ('0_작업/', '1_수집/', '2_지식/')       # 폰 보기가 고친 원본(PUT /v1/file) — 데스크톱 brain-source 처럼 사람이 보호를 풀고 고친 것 · 1_수집 은 옛 판을 휴지통에 두고 덮는다  # mf:allow-path  (폰이 원본을 보고 고친 원본을 휴지통 거쳐 덮음 · 사용자 결정 · mobility 작업 F)
-BIN_EXTS = {'docx', 'pptx', 'xlsx', 'csv', 'tsv', 'hwp', 'hwpx', 'sheet', 'html', 'htm', 'txt', 'log', 'v', 'sv', 'vhd', 'py', 'c', 'h', 'cpp', 'm', 'tex', 'typ'}   # 폰 보기가 고칠 수 있는 형식(md 는 /v1/note)
+BIN_EXTS = {'docx', 'pptx', 'xlsx', 'csv', 'tsv', 'hwp', 'hwpx', 'sheet', 'html', 'htm', 'txt', 'log', 'v', 'sv', 'vhd', 'py', 'c', 'h', 'cpp', 'm', 'tex', 'typ', 'sdocx'}   # 폰 보기가 고칠 수 있는 형식(md 는 /v1/note · sdocx = 삼성노트 그 자리 필기 11-23)
 BIN_MAX = 64 * 2 ** 20                              # 폰이 고쳐 올리는 원본 한 벌 상한(폰 보기 상한 docx 30 · pptx 60 MB)
 UP_DIR = os.path.join(STATE, 'upload')              # 공유로 받는 중인 조각(볼트와 같은 드라이브 · git 밖) — 다 받으면 받은함으로 이름만 바꿔 옮긴다
 UP_MARGIN = 2 * 2 ** 30                             # 공유 받기 상한 = PC 남은 자리 — 받고 나서 이보다 적게 남으면 507(사용자 11-16 «64mb 제한 없애기»)
@@ -359,16 +376,24 @@ class Finder:
             self.used = time.time()
             rows = self.mod.ranked(q, self.idx, mode, self.model, self.name)
             notes = self.mod.notes(self.idx)
-            out = []
+            out = fresh_hits(q, self.idx, k)    # 색인이 아직 모르는 새 노트·고친 노트(버스가 본 것 · 11-23)
+            seen = {x['path'] for x in out}
             for score, rp in rows:
+                if len(out) >= k:
+                    break
                 if '/_lms/' in rp or not (rp + '/').startswith(READ_ROOTS):
                     continue                    # 원시 JSON 색인은 찾기를 어지럽힌다(10-25 실측)
                 a = os.path.join(VAULT, *rp.split('/'))
-                if not os.path.exists(a) or phone_hidden(a):
+                gist = (notes.get(rp) or {}).get('gist', '')
+                if not os.path.exists(a):
+                    rp = moved_to(rp)           # 옮긴 노트 = 새 자리(색인을 다시 만들 때까지 · 11-23)
+                    if not rp:
+                        continue
+                    a = os.path.join(VAULT, *rp.split('/'))
+                if rp in seen or phone_hidden(a):
                     continue
-                out.append({'path': rp, 'score': round(float(score), 4), 'gist': (notes.get(rp) or {}).get('gist', '')})
-                if len(out) >= k:
-                    break
+                seen.add(rp)
+                out.append({'path': rp, 'score': round(float(score), 4), 'gist': gist})
             return out
 
     def unload_if_idle(self):
@@ -1170,7 +1195,7 @@ def rings_check(b):
     return {'ok': True, 'items': alarms.rings_wait(asked, wait if asked else 0)}
 
 
-# ───────── 즉시 알림(11-18 시험판 · 연구 제작자 연구 노트 · 제작 알림-즉시-제작.md) ─────────
+# ───────── 즉시 알림(11-18 시험판 · 연구 제작자 작업 노트 · 제작 알림-즉시-제작.md) ─────────
 # 폰이 POST /v1/push 로 물음을 붙잡아 두면 사건이 나는 순간 답한다. 붙잡을지는 PC 가 정한다(push_policy) — config.json «push»:
 #   hold   = off(기본 · 옛 길 그대로) | auto(급함 쓰는 분류 체계가 켜짐 · 승인 적용기와 키가 있음) | always(시험 «늘 붙잡기»)
 #   holder = fgs(포그라운드 서비스 · 방식 F) | nls(알림 접근 리스너 · 방식 L) | alt(날짜로 번갈아) | {기기 이름: 방식, "*": 기본}
@@ -1356,7 +1381,7 @@ def push_watch(stop=None):
                     log('즉시 알림: 목록 바뀜 → list')
                 last['list'] = h
                 n = approve_count()[0]
-                if last['appr'] is not None and n > last['appr']:
+                if last['appr'] is not None and n != last['appr']:   # 줄 때도(PC 붙임·만료·거둠·다른 기기 승인 · 11-21)
                     approve_forget()
                     alarms.push_emit('ping', {'approve': approve_brief(), 'modules': phone_modules()})
                 last['appr'] = n
@@ -1438,7 +1463,7 @@ def write_atomic(a, text):
     os.replace(tmp, a)
 
 
-# ───────── 책갈피(11-18 · 계획 제작자 계획 노트 §4.4·§4.5) ─────────
+# ───────── 책갈피(11-18 · 계획 제작자 작업 노트 §4.4·§4.5) ─────────
 # 기기마다 파일 하나 — PC = brain-base(pc.json) · 폰·탭 = 이 문이 그 기기 이름으로 · 한 파일을 둘이 안 쓰니 잠금이 없다(이 문 안의 차례만 지킨다).
 # 손 책갈피 = 모든 기기 파일의 marks 합 − gone(지운 때가 더한 때보다 뒤) · 마지막 본 곳 = 기기마다 칸 · 옮김 = 장부 mv·rename(적은 때 뒤의 것만).
 MARKS = os.path.join(HERE, '_index', 'work', '책갈피')
@@ -1687,6 +1712,38 @@ def merge_lines(base, mine, cur, ticks_only=False):
     return out, took, dropped
 
 
+def union_lines(mine, cur, ticks_only=False):
+    """기준 판 없는 폰 글(mine)을 PC 지금 판(cur)에 얹는다 — PC 에 없는 «일정 줄»만 넣는다(폰 글에서 바로 앞에 있던 줄 뒤 · 없으면 마지막 일정 줄 뒤).
+    기준 판이 없으면 폰이 무엇을 바꿨는지 알 수 없다. 그대로 merge_lines 에 넘기면 폰 글 전체가 «새 줄»이 되어 파일이 통째로 한 번 더 들어간다(11-24 내-일정 겹침).
+    머리·설명 줄과 체크 칸만 다른 줄은 PC 판(데스크톱 우선) · 생성 파일(ticks_only)은 아무것도 안 넣는다.
+    → (줄들, 넣은 줄 수, 버린 줄 수)"""
+    out, have = list(cur), set(cur)
+    took = dropped = 0
+    prev = None                                     # 폰 글에서 바로 앞의 일정 줄 중 PC 판에도 있는 것
+    for k, line in enumerate(mine):
+        if not schedule.LINE.match(line):
+            continue
+        if line in have:
+            prev = line
+            continue
+        twin = next((c for c in out if tick_only(line, c)), None)
+        if ticks_only or twin is not None:
+            dropped += 1
+            prev = twin or prev
+            continue
+        if prev is not None:
+            at = out.index(prev) + 1
+        else:
+            nxt = next((m for m in mine[k + 1:] if m in have and schedule.LINE.match(m)), None)   # 앞 줄이 없으면 폰 글의 뒤 줄 앞
+            last = [i for i, c in enumerate(out) if schedule.LINE.match(c)]
+            at = out.index(nxt) if nxt is not None else last[-1] + 1 if last else len(out) - (1 if out and not out[-1] else 0)
+        out.insert(at, line)
+        have.add(line)
+        prev = line
+        took += 1
+    return out, took, dropped
+
+
 def merge_schedule(b):
     """폰 캘린더의 고침 — {path, base, text}: 폰이 본 판(base 글)에서 폰 글(text)로 바뀐 줄만 PC 지금 판에 얹는다(merge_lines).
     폰은 일정 파일을 통째로 쓰지 않는다(그 사이 PC 의 새 줄·생성기 손질이 사라지지 않게). 반복 규칙이 바뀌면 반복 일정도 다시 편다(schedule.repeat).
@@ -1709,7 +1766,12 @@ def merge_schedule(b):
         else:
             cur = ''                                # 폰 캘린더가 처음 만든 파일(내-일정·반복-규칙)
         nl = '\r\n' if '\r\n' in cur else '\n'
-        ls, took, dropped = merge_lines(split(base), split(text), split(cur), bool(GEN_HEAD.search(cur[:800])))
+        gen = bool(GEN_HEAD.search(cur[:800]))
+        if cur.strip() and not base.strip():        # PC 에 파일이 있는데 폰에 기준 판이 없음(새 기기 · 옛 장부) — 통째로 끼워 넣지 않고 없는 일정 줄만
+            ls, took, dropped = union_lines(split(text), split(cur), gen)
+            log(f'폰 캘린더 {name} 기준 판 없음 — 없는 일정 줄만 넣음')
+        else:
+            ls, took, dropped = merge_lines(split(base), split(text), split(cur), gen)
         out = nl.join(ls)
         if out != cur:
             write_atomic(a, out)
@@ -1984,7 +2046,8 @@ def watch(b):
             except OSError:
                 cur = None
             if cur != tag:
-                out.append({'path': rel, 'gone': True} if cur is None else {'path': rel, 'etag': cur})
+                to = moved_to(rel) if cur is None else None
+                out.append({'path': rel, 'gone': True, **({'moved': to} if to else {})} if cur is None else {'path': rel, 'etag': cur})
         locks = locks_now(rels, who)
         sig = '|'.join(f"{x['path']}:{x['label']}:{int(x['mine'])}" for x in locks)
         if who and _wgen.get(who) != my:
@@ -2203,15 +2266,19 @@ def upload_status(q):
 
 
 INK_ATT = '2_지식/필기/_첨부/'                         # mf:allow-path  (필기 첨부 자리 = 본체 brain-source ink 규칙을 복사한 것 · 계약 목록 «복사한 규칙») · 필기에 넣는 사진·PDF 자리(11-16 · 탭 기기 파일) — 받은함은 Claude 가 비우는 정거장이라 안 씀
-INK_OUT = '0_작업/필기/'                             # mf:allow-path  (필기 «PDF 로 볼트에 저장» 자리 = 본체 brain-source INK_OUT.desktop 을 복사한 것) · 같은 이름은 옛 판을 휴지통 거쳐 덮음(11-18 필기 11차 · 데스크톱과 같게)
+INK_OUT = '0_작업/필기/'                             # mf:allow-path  (옛 필기 «PDF 로 볼트에 저장» 자리 — brain-source 0.36.38 까지의 폰이 보냄 · 받기만 남김)
+OUT_RE = re.compile(r'0_작업/(배움|일|생활|분야)/[^/]+/(?:[^/]+/)*')   # mf:allow-path  (내보낸 PDF 자리 = 본체 brain-source outdir.ts 규칙 «0_작업/<영역>/<주제>/…» 를 복사한 것 · 11-23 폰 PDF) · 같은 이름은 옛 판을 휴지통 거쳐 덮음
 
 
 def upload_dir(to):
-    """올릴 자리 — to 가 필기 첨부 자리 아래면 그 폴더(볼트 상대 · 끝 /) · 필기 내보냄 자리(INK_OUT 그 폴더만) · 없으면 받은함. 그 밖은 403."""
+    """올릴 자리 — to 가 필기 첨부 자리 아래면 그 폴더(볼트 상대 · 끝 /) · 내보낸 PDF 자리(OUT_RE · 옛 INK_OUT) · 없으면 받은함. 그 밖은 403."""
     if not to:
         return roles.path('inbox') + '/'
     to = unicodedata.normalize('NFC', str(to)).strip('/') + '/'
     if to == INK_OUT:
+        return to
+    if OUT_RE.fullmatch(to):
+        clean(to + 'x', ('0_작업/',))               # 위로 나가기·숨은 이름·끝 점 막음
         return to
     if not to.startswith(INK_ATT):
         raise Bad(403, '이 자리는 안 됨')
@@ -2228,8 +2295,8 @@ def upload_finish(name, part, hx, want, to=None):
         os.remove(part)
         raise Bad(400, '빈 파일' if not size else '받은 바이트가 다름(sha256)')
     inbox = upload_dir(to)
-    if inbox == INK_OUT:
-        return upload_replace(name, part, hx, size, to)
+    if inbox == INK_OUT or OUT_RE.fullmatch(inbox):
+        return upload_replace(name, part, hx, size, to, inbox)
     stem, ext = os.path.splitext(name)
     with WRITE:
         n = 1
@@ -2262,10 +2329,10 @@ def upload_finish(name, part, hx, want, to=None):
     return {'ok': True, 'path': rel, 'sha256': hx}
 
 
-def upload_replace(name, part, hx, size, to):
-    """필기 «PDF 로 볼트에 저장»(폰·탭 · 11-18 필기 11차) — INK_OUT/<이름> 에 둔다. 같은 이름이 있으면 옛 판을 휴지통에 두고 덮는다
+def upload_replace(name, part, hx, size, to, out=INK_OUT):
+    """폰 «PDF 로 볼트에 저장»·«PDF 로 내보내기»(필기 11-18 · 노트·표 11-23) — out/<이름> 에 둔다. 같은 이름이 있으면 옛 판을 휴지통에 두고 덮는다
     (데스크톱이 같은 자리를 덮는 것과 같게 · 장부 by=phone · 되돌리기). 같은 내용이면 그대로(same) · 응답을 못 받은 폰이 또 보내도 한 벌."""
-    rel, a = clean(INK_OUT + name, (INK_OUT,))
+    rel, a = clean(out + name, (out,))
     with WRITE:
         if os.path.isfile(a) and os.path.getsize(a) == size and fileops.sha256(a) == hx:
             os.remove(part)
@@ -2275,8 +2342,8 @@ def upload_replace(name, part, hx, size, to):
         try:
             os.makedirs(os.path.dirname(a), exist_ok=True)
             if os.path.exists(a):
-                fileops.op_rm(c, rel, '덮어쓰기 전 옛 판: 필기 PDF 로 볼트에(폰)', user_asked=True, quiet=True)
-            fileops.op_cp(c, part, rel, '필기 PDF 로 볼트에(폰)', dup_ok=True, move=True, quiet=True, src_label='phone:' + name)
+                fileops.op_rm(c, rel, '덮어쓰기 전 옛 판: PDF 로 볼트에(폰)', user_asked=True, quiet=True)
+            fileops.op_cp(c, part, rel, 'PDF 로 볼트에(폰)', dup_ok=True, move=True, quiet=True, src_label='phone:' + name)
         except fileops.Stop as e:
             raise Bad(409, str(e))
         finally:
@@ -2285,8 +2352,41 @@ def upload_replace(name, part, hx, size, to):
         _up_done[(name, hx, size, to)] = rel
         while len(_up_done) > 50:
             _up_done.pop(next(iter(_up_done)))
-    log(f'필기 PDF 받음 {size}B → {INK_OUT}')
+    log(f'PDF 받음 {size}B → {out}')
     return {'ok': True, 'path': rel, 'sha256': hx}
+
+
+PDF_MAX = 64 * 2 ** 20                              # 폰이 보내는 HTML 한 장 상한(그림은 data: 로 안에)
+PDF_LOCK = threading.Lock()                         # 브라우저 한 번에 하나(메모리)
+
+
+def make_pdf(q, raw):
+    """POST /v1/pdf?name=<이름>.pdf&to=<0_작업/<영역>/<주제>/…> · 본문 = 폰이 그린 HTML(UTF-8) → 이 PC 가 PDF 로 인쇄(pdfprint · 창 없음)
+    → 그 자리에 둔다(같은 이름은 옛 판을 휴지통 거쳐 덮음 · upload_replace 와 같음) → {path}. 폰은 받아 열거나 공유한다."""
+    name = upload_name(q.get('name'))
+    if not name.lower().endswith('.pdf'):
+        raise Bad(400, '이름이 잘못됨')
+    out = upload_dir(q.get('to'))
+    if not OUT_RE.fullmatch(out):
+        raise Bad(403, '이 자리는 안 됨')
+    try:
+        html = raw.decode('utf-8')
+    except UnicodeDecodeError:
+        raise Bad(400, 'UTF-8 아님')
+    if not html.strip():
+        raise Bad(400, '빈 문서')
+    os.makedirs(UP_DIR, exist_ok=True)
+    part = os.path.join(UP_DIR, 'pdf-' + secrets.token_hex(8) + '.part')
+    try:
+        with PDF_LOCK:
+            pdfprint.html_to_pdf(html, part)
+    except subprocess.TimeoutExpired:
+        raise Bad(504, 'PDF 만들기 시간 넘음')
+    except RuntimeError as e:
+        raise Bad(500, str(e))
+    size = os.path.getsize(part)
+    log(f'PDF 만듦 {len(raw)}B HTML → {size}B')
+    return upload_replace(name, part, fileops.sha256(part), size, q.get('to'), out)
 
 
 def new_note(b):
@@ -2760,8 +2860,73 @@ def op_path(rel):
     return rel, a
 
 
+def folder_name(name):
+    """폰이 준 새 폴더 이름 — 안 되면 까닭 · 되면 None(빈 이름·나누개·점 자리·윈도 금지 글자·끝 점/공백·장치 이름·너무 김)."""
+    if not isinstance(name, str) or not name.strip():
+        return '빈 이름'
+    if '/' in name or '\\' in name:
+        return '이름에 / \\ 안 됨'
+    if name in ('.', '..') or name.startswith('.'):
+        return '점으로 시작하는 이름 안 됨'
+    if BAD_PART.search(name):
+        return '쓸 수 없는 글자(<>:"|?*)'
+    if name != name.rstrip(' .') or name != name.lstrip(' '):
+        return '앞뒤 공백·끝 점 안 됨'
+    if RESERVED.fullmatch(name):
+        return '윈도 장치 이름 안 됨'
+    if len(name) > 120:
+        return '이름이 너무 김(120자)'
+    return None
+
+
+def mkdir_op(b):
+    """폰 «새 폴더» — 폰 범위 안(op_path · 숨김 _lms·_색인·점 자리 밖) · 부모 폴더가 있고 숨긴 자리 아님 · 이미 있으면 409.
+    fileops.op_mkdir(장부 by=phone) → 되돌리기 묶음(/v1/undo = 빈 폴더면 치움 · 안에 무엇이 생겼으면 둠)."""
+    dst = b.get('dst')
+    if not isinstance(dst, str):
+        raise Bad(400, '빈 이름')
+    why = folder_name(dst.rsplit('/', 1)[-1])     # 끝 칸 = 새 이름(역슬래시는 바꾸지 않고 이름 글자로 본다 → 거절)
+    if why:
+        raise Bad(400, why)
+    rel, a = op_path(dst)
+    parent = posixpath.dirname(rel)
+    pa = os.path.join(VAULT, *parent.split('/'))
+    if not os.path.isdir(pa) or phone_hidden(pa):
+        raise Bad(404, '폴더 없음')
+    if os.path.lexists(a):                      # 윈도는 대소문자를 안 가린다 — 같은 이름(대소문자만 다름)도 있음
+        raise Bad(409, '이미 있음')
+    c = fileops.Ctx(VAULT, by='phone')
+    with WRITE:
+        try:
+            ev = fileops.op_mkdir(c, rel, '폰에서 새 폴더')
+        except fileops.Stop as e:
+            raise Bad(409, str(e))
+        finally:
+            if c.events:
+                fileops.write_view(c)
+    if not ev:
+        raise Bad(409, '이미 있음')
+    _undo.add(c.batch)
+    log(f'폰 새 폴더 묶음 {c.batch}')
+    return {'batch': c.batch, 'dst': rel}
+
+
+def keep_ext(rel, a, dst, ad):
+    """파일 이름 바꾸기(같은 폴더 · dst 가 폴더 아님)는 원래 확장자를 언제나 지킨다 — 확장자를 바꾸는 길은 없다(사용자 11-23 «이름바꾸기에서 확장자를 빼»).
+    dst 가 원래 확장자로 끝나면(대소문자 무시) 그 꼴을 원래 글자로 · 아니면 덧붙인다(옛 판 폰이 «Hw4» 를 보내도 «Hw4.sdocx» · «Hw5.pdf» 는 «Hw5.pdf.sdocx»).
+    11-23 폰 «이름 바꾸기»가 `….sdocx → Hw4` 로 확장자를 지워 폰이 형식을 몰라 바깥 열기로 넘김. 확장자 없는 파일·폴더·옮기기는 그대로."""
+    if not os.path.isfile(a) or os.path.isdir(ad) or posixpath.dirname(rel).lower() != posixpath.dirname(dst).lower():
+        return dst
+    ext = posixpath.splitext(rel)[1]
+    if not ext:
+        return dst
+    return (dst[:-len(ext)] if dst.lower().endswith(ext.lower()) else dst) + ext
+
+
 def fileop(b):
     op = b.get('op')
+    if op == 'mkdir':
+        return mkdir_op(b)
     if op not in ('mv', 'rm'):
         raise Bad(400, '모르는 일')
     rel, a = op_path(b.get('src'))
@@ -2777,6 +2942,7 @@ def fileop(b):
                 dst, ad = op_path(b.get('dst'))
                 if os.path.isdir(a) and (dst + '/').startswith(rel + '/'):
                     raise Bad(400, '자기 안으로')
+                dst = keep_ext(rel, a, dst, ad)
                 ev = fileops.op_mv(c, rel, dst, '폰에서 옮김')
                 to = ev.get('dst') if isinstance(ev, dict) else None
             else:
@@ -3146,7 +3312,7 @@ def trash_restore_many(ids):
     return {**({'batch': c.batch} if c.events else {}), 'items': out}
 
 
-# ───────── 폰 승인(11-17 · 설계 제작자 설계 노트 · 소스 C:\brain-approve) ─────────
+# ───────── 폰 승인(11-17 · 설계 제작자 작업 노트 · 소스 C:\brain-approve) ─────────
 # 서버는 «안 믿음»: 나르고 부르기만 한다. 붙이는 판단은 전부 게이트 코어 적용기(3_시스템/hooks/approve/approve.py)가 한다.
 # 대기 수(배지·알림)는 서버가 묶음 json 만 읽어 센다 — 적용기가 깔리기 전에도 뜬다(B 단계). 적용기가 없으면 나머지 길은 ok:false.
 # 풀기·등록·폐기·콘솔 붙이기 끝점은 일부러 없다 — 사람 콘솔만(설계 §3.3 · T8).
@@ -3185,10 +3351,12 @@ def approve_count():
         names = []
     for r in names:
         d = os.path.join(APPROVE_BB, r, 'pending')
+        if not os.path.isdir(os.path.join(APPROVE_BB, r)):
+            continue
         try:
             files = os.listdir(d)
         except OSError:
-            continue
+            files = []          # pending/ 없이 명령만 올린 run(pending.py cmd)도 명령 셈은 한다(11-21 찾음)
         n = o = 0
         for f in files:
             if not re.match(r'\d+-.*\.json$', f):
@@ -3270,7 +3438,7 @@ def approve_keys():
         return 0
 
 
-# ───────── 손발 앱 모듈 켜기(11-18 · 제작자 설계 노트 §3·§4) ─────────
+# ───────── 손발 앱 모듈 켜기(11-18 · 제작자 작업 노트 §3·§4) ─────────
 # 앱(brain.phone 판 35~)은 기능마다 모듈이고, 핑의 'modules' 로 켜고 끈다(앱 갱신 없이). 말하지 않은 id 는 앱이 마지막 값 → module.json 기본.
 PHONE_MODS_FILE = os.path.join(STATE, 'phone-modules.json')   # {앱 모듈 id: true|false} — 손으로 덮는 자리(없으면 안 씀)
 _phone_mods = {'at': 0.0, 'v': None}
@@ -3418,6 +3586,7 @@ def approve_reject(b):
         log(f'폰 명령 승인 거절 {run} {nid} · 기기 {req_device()}')
         return res
     res = approve_cli('reject', str(b.get('run') or ''), '--all', str(b.get('all') or ''), '--why', str(b.get('why') or '')[:200])
+    approve_forget()                  # 거절 직후 당김이 30초 캐시의 옛 n 을 받지 않게(11-21)
     log(f'폰 승인 거절 {b.get("run")} · 기기 {req_device()}')
     return res
 
@@ -3497,7 +3666,113 @@ def find_sha(h):
     raise Bad(404, '없음')
 
 
-def resolve(name):
+# ───────── 볼트 바뀜 버스(11-23) — PC 에서 누가 바꿨든 폰이 몇 초 안에(폴더 나무 · 연 노트 · 옛 경로 · 링크 · 홈 · 찾기) ─────────
+BUS = None
+_cgen = {}                  # 기기 id → 바뀜 물음 차례 — 같은 기기가 새로 걸면 옛 물음은 곧 끝낸다(/v1/watch 의 _wgen 과 같은 까닭: 붙잡힌 물음이 쌓여 같은 호스트 연결 6개를 채움 · 11-23 check S30~S32 잼)
+_cgen_lock = threading.Lock()
+FRESH_READ = 200 * 1024                             # 찾기 보탬이 읽는 노트 앞부분
+
+
+def watch_keep(rel, is_dir):
+    """폰에 보일 자리인가 — READ_ROOTS·DOC_ROOTS 안 · 점 이름·숨은 칸(_lms·_색인)·임시 파일 밖. 민감 판정은 내줄 때(changes_post) 한다."""
+    if not (rel + '/').startswith(READ_ROOTS + DOC_ROOTS) or rel.endswith('.tmp'):
+        return False
+    return not any(x.startswith('.') or x in HIDE_PART for x in rel.split('/'))
+
+
+def bus_changed(_kinds):
+    """바뀜이 났다 — 서버가 기억하던 이름 지도(링크)·홈을 비운다(다음 물음이 새로 잰다)"""
+    _names['at'] = _all['at'] = 0
+    _home['v'] = None
+
+
+def bus_start():
+    global BUS
+    if vaultwatch is None:
+        return log('바뀜 버스 없음(vaultwatch.py 없음)')
+    try:
+        BUS = vaultwatch.Bus(VAULT, watch_keep, os.path.join(HERE, 'ledger', 'ops.jsonl'), bus_changed).start()
+        log(f'바뀜 버스 {BUS.mode}')
+    except Exception as e:  # noqa: BLE001 — 버스가 서버 시작을 막지 않게(폰은 옛 길 = 5분 목록)
+        log(f'바뀜 버스 못 켬 {type(e).__name__}: {e}')
+
+
+def changes_post(b):
+    """POST /v1/changes {since, wait} — 폰 범위 안 바뀜을 폴더(dirs)와 옮김(moves)으로. 폰에 안 주는 노트(민감)는 옮김에서 뺀다(폴더만)."""
+    if BUS is None:
+        raise Bad(404, '없는 길')
+    try:
+        since = int(b.get('since') or 0)
+    except (TypeError, ValueError):
+        since = 0
+    who = str(b.get('id') or '')[:64]
+    with _cgen_lock:
+        my = _cgen[who] = _cgen.get(who, 0) + 1 if who else 0
+    r = BUS.since(since, b.get('wait') if isinstance(b.get('wait'), int) else 0, stop=(lambda: _cgen.get(who) != my) if who else None)
+    if r.get('stale'):
+        return {'seq': r['seq'], 'dirs': [], 'moves': [], 'stale': True}     # 같은 기기가 새로 걸었다(판 바꿈·다시 읽기) — 옛 물음은 바로 끝내 연결을 돌려준다
+    dirs, moves = set(), []
+    for e in r['events']:
+        for p in (e.get('p'), e.get('src'), e.get('dst')):
+            if p:
+                dirs.add(p.rsplit('/', 1)[0] if '/' in p else '')
+        if e['k'] == 'mv' and watch_keep(e['dst'], e['dir']):
+            a = os.path.join(VAULT, *e['dst'].split('/'))
+            if os.path.exists(a) and not phone_hidden(a):
+                moves.append({'src': e['src'], 'dst': e['dst'], 'dir': e['dir']})
+    return {'seq': r['seq'], 'dirs': sorted(dirs), 'moves': moves, 'mode': r.get('mode'), **({'reset': True} if r.get('reset') else {})}
+
+
+def moved_to(rel):
+    """없어진 파일의 지금 자리(폰이 옛 경로로 열 때 · 11-23) — 버스가 본 옮김 → 장부 옮김(옵시디언·fileops·따라가기) → 같은 끝 이름(볼트에서 하나뿐인 이름 규약).
+    폰에 안 주는 자리·찾지 못함 = None."""
+    cands = [c for c in ((BUS.moved(rel) if BUS else None), mark_follow(rel, 0)) if c and c != rel]
+    for c in cands:
+        try:
+            r, a = clean(c, READ_ROOTS + DOC_ROOTS)
+        except Bad:
+            continue
+        if os.path.isfile(a) and not phone_hidden(a):
+            return r
+    try:
+        to = resolve(rel, quiet=True)['path']
+    except Bad:
+        return None
+    return to if to != rel else None
+
+
+def fresh_hits(q, idx, k):
+    """찾기 보탬 — 서버가 켜진 뒤 생기거나 고친 노트 중 색인이 아직 모르는(색인 시각보다 새) 것에서 찾는 말이 다 든 것(최근부터 · 3개까지)"""
+    words = [w for w in (q or '').lower().split() if w]
+    if BUS is None or not words:
+        return []
+    out = []
+    for rp, _at in reversed(BUS.fresh_notes()):
+        if len(out) >= min(3, k):
+            break
+        if '/_lms/' in rp or not (rp + '/').startswith(READ_ROOTS):
+            continue
+        a = os.path.join(VAULT, *rp.split('/'))
+        try:
+            mt = os.path.getmtime(a)
+        except OSError:
+            continue
+        ent = idx.get(rp) if isinstance(idx, dict) else None
+        if isinstance(ent, dict) and float(ent.get('mtime') or 0) >= mt:
+            continue                                # 색인이 이미 이 판을 안다 — 순위는 색인 몫
+        if phone_hidden(a):
+            continue
+        try:
+            with open(a, encoding='utf-8', errors='replace') as f:
+                text = (os.path.basename(rp)[:-3] + '\n' + f.read(FRESH_READ)).lower()
+        except OSError:
+            continue
+        if all(w in text for w in words):
+            out.append({'path': rp, 'score': 0, 'gist': '', 'fresh': True})
+    return out
+
+
+def resolve(name, quiet=False):
     """노트·원본 이름 → 경로(폰에서 [[링크]]를 누를 때 · 파일 이름은 볼트에서 하나뿐이라는 규약). 1분 캐시.
     못 찾으면 404(볼트에도 없음 · 이름을 로그에 한 줄) 또는 403(볼트에는 있는데 폰에 안 줌 — 민감·READ_ROOTS 밖·_색인·_lms).
     경로 꼴 링크([[1_수집/배움/…/글|원본]] · [[1_수집/…/글.pdf]])는 그 자리를 먼저 보고, 없으면 끝 이름으로 찾는다.
@@ -3537,9 +3812,13 @@ def resolve(name):
     rel = _names['map'].get(name_key(want))
     if rel and not phone_hidden(os.path.join(VAULT, *rel.split('/'))):
         return {'path': rel}
+    if not rel and _names['at'] and name_key(want) in vault_names() and _names['at'] < _all['at']:
+        _names['at'] = 0                            # 이름 지도가 더 낡았다(막 만든 노트) — 한 번 다시 만들어 본다(11-23)
+        return resolve(name, quiet)
     if rel or name_key(want) in vault_names():      # 볼트에는 있는데 폰에 안 주는 이름(민감 · 폰 범위 밖 · 색인) — «없음»과 가른다. 경로·내용은 내주지 않는다
         raise Bad(403, 'PC에서만')
-    log(f'링크 없음 {CTRL.sub(" ", name or "")[:120]}')   # 볼트에도 없는 이름만 — 폰에서 못 찾는 링크를 세어 고칠 것을 가린다(찾는 말·경로 로그와 달리 «없는 이름»이다)
+    if not quiet:
+        log(f'링크 없음 {CTRL.sub(" ", name or "")[:120]}')   # 볼트에도 없는 이름만 — 폰에서 못 찾는 링크를 세어 고칠 것을 가린다(찾는 말·경로 로그와 달리 «없는 이름»이다)
     raise Bad(404, '없음')
 
 
@@ -3602,15 +3881,18 @@ def open_html(rel, err, to, ua):
     msg = f'<p class="err">{_h.escape(err)}: {_h.escape(rel)}</p>' if err else f'<p class="path">{_h.escape(rel)}</p>'
     btn = '' if err else (f'<a class="b" href="{_h.escape(u["intent"] if android else u["phone"])}">폰 옵시디언에서 열기</a>'
                          f'<a class="b" href="{_h.escape(u["pc"])}">PC 옵시디언에서 열기</a>')
-    go = f'<script>location.replace({json.dumps(auto)})</script>' if auto else ''
-    if auto and kind == 'pc':   # 11-20 사용자 «크롬 창이 옵시디언을 연 뒤에도 남음» — 옵시디언이 앞으로 오면 이 탭을 닫음 · «열기» 묻는 창이 떠 있는 동안은 안 닫음 · 못 닫으면 한 줄
-        # 신호 = 서버가 잰 전경 창(/open/front · 옵시디언이 앞에 오면 답함) + 창 초점 잃음. 바깥 앱이 연 탭은 OS 초점 없이 열려 blur 가 안 오는 때가 있다
-        # (11-20 잼: 따로 쓰는 크롬에 chrome.exe <URL> 로 연 탭 = history 1 · hasFocus true · window.close 됨 → 닫기 권한이 아니라 신호가 없던 것).
+    # 넘기기(location.replace)는 맨 끝 대본에 둔다 — 바깥 주소로 넘기면 크롬이 HTML 해석을 멈춰 그 뒤 <script> 는 읽히지도 않는다
+    # (11-21 잼: 옛 쪽은 DOM 의 script 1개 · 닫기 대본 없음 → /open/front 0번 · 실제 누름 3번도 0번 · 세 번째 고침 까닭)
+    go = ''
+    if auto and kind == 'pc':   # 11-20 사용자 «크롬 창이 옵시디언을 연 뒤에도 남음» — 옵시디언이 앞에 오면(서버가 잰 전경 창) 이 탭을 닫음 · 못 닫으면 한 줄
+        # blur 는 안 씀: «열기» 묻는 창이 초점을 가져가도 blur 가 올 수 있다(그때 닫으면 옵시디언이 안 열림). 크롬이 바깥 앱 열기를 막은 때
+        # (열 때마다 다음 열기는 크롬 페이지 입력이 있어야 풀림 · Chromium g_accept_requests)는 단추를 누르면 열리고 그 뒤에 닫힌다 — 그래서 묻기를 10분 이어 감.
         go += ('<script>(function(){var d=false;function bye(){if(d)return;d=true;setTimeout(function(){window.close();'
                'setTimeout(function(){document.body.insertAdjacentHTML("beforeend","<p class=\\"path\\">옵시디언에서 열었습니다 · 이 탭은 닫아도 됩니다</p>")},400)},300)}'
-               'window.addEventListener("blur",bye);document.addEventListener("visibilitychange",function(){if(document.hidden)bye()});'
-               'var n=0;function ask(){if(d||n++>=4)return;fetch("/open/front?wait=20",{cache:"no-store"}).then(function(r){return r.json()})'
+               'var n=0;function ask(){if(d||n++>=30)return;fetch("/open/front?wait=20",{cache:"no-store"}).then(function(r){return r.json()})'
                '.then(function(j){j&&j.front?bye():ask()},function(){setTimeout(ask,2000)})}setTimeout(ask,300)})()</script>')
+    if auto:
+        go += f'<script>location.replace({json.dumps(auto)})</script>'
     return ('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<title>{name} — 옵시디언으로</title><style>body{{font:16px system-ui,sans-serif;margin:24px;color:#222}}'
             '.path{color:#666;word-break:break-all}.err{color:#b00}.b{display:block;margin:12px 0;padding:14px;border-radius:10px;'
@@ -3660,9 +3942,10 @@ def seen_mark(path):
         d, key = _seen['d'], f'{ip}|{kind}'
         cur = d.get(key) if isinstance(d.get(key), dict) else {}
         name = name or cur.get('name')
-        if cur and t - cur.get('at', 0) < 60 and cur.get('name') == name:
+        ua = getattr(_req, 'ua', '') or cur.get('ua')
+        if cur and t - cur.get('at', 0) < 60 and cur.get('name') == name and cur.get('ua') == ua:
             return                                  # 1분 안에 같은 기기 = 파일을 다시 안 씀
-        d[key] = {'at': t, **({'name': name} if name else {})}
+        d[key] = {'at': t, **({'name': name} if name else {}), **({'ua': ua} if ua else {})}
         if len(d) > SEEN_MAX:
             for k in sorted(d, key=lambda k: d[k].get('at', 0) if isinstance(d[k], dict) else 0)[:len(d) - SEEN_MAX]:
                 d.pop(k, None)
@@ -3742,6 +4025,7 @@ class H(http.server.BaseHTTPRequestHandler):
         self.sent = 0
         _req.device = device_of(self.headers.get('X-Brain-Device'))
         _req.ip = ip_of(self.client_address[0], self.headers.get('X-Forwarded-For'))
+        _req.ua = (self.headers.get('User-Agent') or '')[:200]   # 기기의 안드로이드·웹뷰 판을 장부(seen.json)에 남기려고
         try:
             if not open_ and not self.authed():     # open_ = 짝짓기 길 넷뿐(짝 코드가 열쇠 노릇 · 코드 없으면 없는 길과 같은 404)
                 code = 401
@@ -3796,6 +4080,8 @@ class H(http.server.BaseHTTPRequestHandler):
         except Bad as e:
             rel, err = (q.get('file') or '')[:300], e.msg
         body = open_html(rel, err, q.get('to') or '', self.headers.get('User-Agent') or '').encode('utf-8')
+        ip = req_ip()
+        log(f'볼트 링크 {q.get("to") or ("폰" if re.search(r"android|iphone|ipad|mobile", self.headers.get("User-Agent") or "", re.I) else "PC")} · 주소 {ip}{" (이 PC)" if own_ip(ip) else ""}')   # 11-21 기록엔 누른 기기가 없어 폰·PC 를 못 가름
         return self.reply(200 if not err else 404, body=body, ct='text/html; charset=utf-8',
                           headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex'})
 
@@ -3919,6 +4205,18 @@ class H(http.server.BaseHTTPRequestHandler):
             return self.reply(200, folders())
         if u.path == '/v1/ready/list':
             return self.reply(200, {'items': ready.items(os.path.join(VAULT, '.claude', 'skills', 'mobility', 'outside.json'))})   # mf:allow-path  (모듈 제 목록 · 글은 한 곳)
+        if u.path == '/v1/tabwork':                                   # 탭 곁창 작업 모드 상태(폰 승인 대기·켜짐·거절·만료)
+            if tabwork is None:
+                return self.reply(200, {'ok': True, 'state': 'ask'})
+            try:
+                return self.reply(200, tabwork.status(VAULT, q))
+            except tabwork.TabWorkError as e:
+                raise Bad(e.code, e.msg)
+        if u.path in ('/v1/notechat', '/v1/notechat/past'):          # 탭 곁창 — 조각 묻기 · 지난 대화
+            try:
+                return self.reply(200, notechat_route.poll(q) if u.path == '/v1/notechat' else notechat_route.past(VAULT, q))
+            except notechat_route.NoteChatError as e:
+                raise Bad(e.code, e.msg)
         if u.path == '/v1/views':
             return self.reply(200, view_list())
         if u.path == '/v1/view':
@@ -3981,7 +4279,8 @@ class H(http.server.BaseHTTPRequestHandler):
         if u.path == '/v1/file':
             rel, a = clean(q.get('path'), READ_ROOTS + DOC_ROOTS)
             if not os.path.isfile(a) or phone_hidden(a):
-                raise Bad(404, '없음')
+                to = None if os.path.isfile(a) else moved_to(rel)
+                raise Bad(404, '없음', **({'moved': to} if to else {}))      # 옮긴 파일을 옛 경로로 — 폰이 새 자리로 간다(11-23)
             tag = etag_of(a)
             if self.headers.get('If-None-Match') == tag:
                 return self.reply(304, body=b'', headers={'ETag': tag})
@@ -4167,13 +4466,32 @@ class H(http.server.BaseHTTPRequestHandler):
         path = u.path
         if path == '/v1/upload':                    # 본문 = 파일 바이트(JSON 아님) — 흘려 받는다
             return self.upload_body({k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()})
+        if path == '/v1/pdf':                       # 본문 = HTML(JSON 아님) — 폰 «PDF 로 볼트에 저장»·«PDF 로 공유»
+            return self.reply(200, make_pdf({k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}, self.read_body(PDF_MAX)))
         raw =self.read_body(DIAG_BODY if path == '/v1/diag' else MAX_BODY)
         try:
             b = json.loads(raw.decode('utf-8') or '{}')
         except ValueError:
             raise Bad(400, 'JSON 아님')
+        if path in ('/v1/tabwork/ask', '/v1/tabwork/end'):          # 탭 곁창 작업 모드 — 폰 승인 요청 올림·거둠(켜는 것은 폰 서명뿐)
+            if tabwork is None:
+                if path == '/v1/tabwork/ask':
+                    raise Bad(503, '승인 요청을 못 올림: 작업 모드가 이 판에 없음')
+                return self.reply(200, {'ok': True, 'state': 'ask'})
+            try:
+                res = tabwork.ask(VAULT, b) if path == '/v1/tabwork/ask' else tabwork.end(VAULT, b)
+            except tabwork.TabWorkError as e:
+                raise Bad(e.code, e.msg)
+            approve_forget()                  # 폰 알림·배지가 30초 캐시의 옛 셈을 받지 않게
+            log(f'탭 작업 모드 {path.rsplit("/", 1)[-1]} · {str(b.get("session") or "")[:8]} → {res.get("state")} · 기기 {req_device()}')
+            return self.reply(200, res)
+        if path in ('/v1/notechat', '/v1/notechat/stop'):           # 탭 곁창 — 시작(모델 호출은 이때만)·멈춤
+            try:
+                return self.reply(200, notechat_route.start(VAULT, b, lambda r: clean(r), phone_hidden) if path == '/v1/notechat' else notechat_route.stop(b))
+            except notechat_route.NoteChatError as e:
+                raise Bad(e.code, e.msg)
         fn = {'/v1/memo': memo, '/v1/note': note, '/v1/new': new_note, '/v1/schedule': add_schedule, '/v1/schedule/check': check_schedule, '/v1/schedule/merge': merge_schedule, '/v1/diag': diag, '/v1/rc': rc_start, '/v1/alarms/fired': lambda x: alarms.fired(x, None if req_device() == UNKNOWN_DEVICE else req_device()), '/v1/alarms/act': alarm_act, '/v1/rings': rings_check, '/v1/push': push_hold, '/v1/push/ack': push_ack_post, '/v1/push/emit': push_emit_post, '/v1/alarms/power': alarm_power, '/v1/alarms/mute': alarm_mute,
-              '/v1/work/finish': work_finish, '/v1/inbox/do': inbox_do, '/v1/undo': undo, '/v1/fileop': fileop, '/v1/fileops': fileops_many, '/v1/todo/check': todo_check, '/v1/trash/restore': trash_restore, '/v1/ink': ink, '/v1/marks': marks_post, '/v1/lock': lock, '/v1/watch': watch,
+              '/v1/work/finish': work_finish, '/v1/inbox/do': inbox_do, '/v1/undo': undo, '/v1/fileop': fileop, '/v1/fileops': fileops_many, '/v1/todo/check': todo_check, '/v1/trash/restore': trash_restore, '/v1/ink': ink, '/v1/marks': marks_post, '/v1/lock': lock, '/v1/watch': watch, '/v1/changes': changes_post,
               '/v1/format/set': format_set, '/v1/view/act': view_act, '/v1/ready': ready_post,
               '/v1/approve/sign': approve_sign, '/v1/approve/reject': approve_reject, '/v1/approve/freeze': approve_freeze, '/v1/approve/enroll': approve_enroll}.get(path)
         if not fn:
@@ -4248,6 +4566,7 @@ def main():
                 refresh_ssid()          # 핑이 SSID 를 기다리지 않게 읽어 둔다(ssid() · 10분 안이면 그 값)
     threading.Thread(target=sweep, daemon=True).start()
     threading.Thread(target=push_watch, daemon=True, name='push-watch').start()     # 즉시 알림 살피기(설정 push 가 없으면 아무것도 안 잼)
+    bus_start()
     srv.serve_forever()
 
 
