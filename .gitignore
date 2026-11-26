@@ -1,5 +1,3 @@
 __pycache__/
 *.pyc
 scripts/autocommit_check.py
-scripts/tabwork.py
-scripts/tabwork_check.py
