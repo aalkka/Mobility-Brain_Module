@@ -1686,6 +1686,50 @@ while time.time() < end:
             dummy.wait(5)
             ok('R6 5분 순찰 = 살아 있으면 봄 · 본 RC 가 끝나면 gone(한 번만)', first == 'alive' and srv.rc_seen_tick() == 'gone' and srv.rc_seen_tick() is None
                and bool(json.load(open(srv.RC_OWN, encoding='utf-8')).get('gone')), first)
+
+            # ── 망 끊김 뒤 RC 다시 켜기(11-27) — RC 가 «giving up» 을 남기고 스스로 내려갔으면 why=net · 순찰이 망이 닿을 때 다시 띄움 · 다른 RC 가 돌면 그만
+            giveup = ('\x1b[1A\x1b[J·|· Reconnecting · retrying in 25.4s · disconnected 9m 36s\n'
+                      '\x1b[1A\x1b[J[17:29:30] Error: Persistent errors for 10 minutes, giving up.\n'
+                      '·/· Reconnecting · retrying in 25.4s · disconnected 9m 36s\n\x1b[1A\x1b[J[17:29:30] Shutting down 3 active sessions…\n').encode('utf-8')
+            r6why = 'why' not in json.load(open(srv.RC_OWN, encoding='utf-8'))
+            with open(srv.RC_LOG, 'wb') as f:
+                f.write(b'x' * 20000 + b'\n' + giveup)
+            g1 = srv.rc_gave_up()
+            with open(srv.RC_LOG, 'wb') as f:
+                f.write(b'\x1b[1A\x1b[J* Connected * fake\n')
+            ok('R7 rc.log 끝 «giving up»(화면 제어 문자 섞임) = 망 끊김 · 아니면 아님 · R6 의 gone 은 why 없음', g1 and not srv.rc_gave_up() and r6why)
+            dummy = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'])
+            time.sleep(0.3)
+            with open(srv.RC_OWN, 'w', encoding='utf-8') as f:
+                json.dump({'pid': dummy.pid, 'start': srv.proc_start(dummy.pid), 'at': int(time.time())}, f)
+            first = srv.rc_seen_tick()
+            with open(srv.RC_LOG, 'wb') as f:
+                f.write(giveup)
+            dummy.kill()
+            dummy.wait(5)
+            got = srv.rc_seen_tick()
+            own = json.load(open(srv.RC_OWN, encoding='utf-8'))
+            ok('R8 본 RC 가 «giving up» 을 남기고 끝남 = gone + why net · 시작 때 되살리기는 순찰에 맡김', first == 'alive' and got == 'gone' and own.get('why') == 'net'
+               and bool(own.get('gone')) and srv.rc_resume_why(own, False, 1).startswith('망 끊김'), str(own))
+            nw = srv.rc_net_why
+            ok('R9 판정 — net 아님·돎·안 잼 = 해당 없음 · 망 없음 = 기다림 · 상한 = 까닭 · 망 닿음 = 다시 켬',
+               nw({'pid': 1, 'gone': 1}, False, True, 0) is None and nw(own, True, True, 0) is None and nw(own, False, None, 0) is None
+               and nw(own, False, False, 0) == '망 아직 없음' and nw(own, False, True, srv.RC_NET_DAY).startswith('오늘') and nw(own, False, True, 0) == '')
+            srv._rc_net.update(day='', n=0)
+            n0 = srv.rc_net_tick(net=False)
+            r1 = srv.rc_net_tick(net=True)
+            q = wait_ptr()
+            own2 = json.load(open(srv.RC_OWN, encoding='utf-8'))
+            ok('R10 순찰 — 망 없음 = 안 띄움 · 망 닿음 = 다시 띄움(새 RC_OWN · gone 없음) · 그다음 순찰 = 해당 없음',
+               n0 == '망 아직 없음' and (r1 or '').startswith('다시 켬') and alive(q) and own2.get('pid') == q and not own2.get('gone')
+               and srv.rc_net_tick(net=True) is None, f'{n0} {r1} {own2}')
+            with open(srv.RC_OWN, 'w', encoding='utf-8') as f:
+                json.dump(own, f)                           # 손으로 띄운 RC 가 도는데 기록은 망 끊김 그대로
+            r2 = srv.rc_net_tick(net=True)
+            ok('R11 다른 RC 가 돎 = 망 끊김 다시 켜기 그만(why 지움 · 안 띄움)', r2 == '다른 RC 가 돎' and 'why' not in json.load(open(srv.RC_OWN, encoding='utf-8'))
+               and srv.rc_net_tick(net=True) is None, r2)
+            if q:
+                srv.rc_kill(q)
             os.environ.pop('BRAIN_RC_BIN', None)
             if os.path.exists(pointer):
                 os.remove(pointer)

@@ -57,6 +57,8 @@
   GET  /v1/push/state                   # PC 안에서만 — seq · 붙잡힌 물음 · 기기마다 마지막 물음 · 정책
   (머리 X-Brain-Device = 보낸 기기 이름 · 앱 판 25~ · 없으면 «기기 미상» — 당김·보고·진단·단추 기록이 기기마다)
   POST /v1/alarms/power {on}            # 알림-설정 «켬»(모든 기기 전부 끔·켬) — 폰 종은 0.7.26 부터 이 길을 안 쓴다(전부 끄기는 PC 에서 · 옛 플러그인만)
+  GET  /v1/settings                     # 앱 안 볼트 설정(11-27) — 잘 시간·당김·미리 알림·울릴 일정·바로(알림-설정 블록) · 집 Wi-Fi·민감 노트·일정 쓸 곳(config)
+  POST /v1/settings {set, value}        # 칸 하나 바꿈(set = quiet·pull·before·file·now·wifi·sensitive(hide 만)·write) → GET 과 같은 값 · 노트·config 는 fileops 바꾸기(장부·되돌리기)
   POST /v1/alarms/mute {mute}           # «이 기기만 끄기»(11-17) — 폰·탭 종과 손발 앱 스위치가 같은 값 · 기기 = 앱 머리 또는 같은 tailnet 주소의 앱 · GET /v1/alarms 에 mute · ping app 에 here·mute·me
   POST /v1/work/finish {path}          # 홈 «작업» 체크 = 끝냄(데스크톱과 같은 work.finish · 장부 by=phone) → {batch}
   POST /v1/inbox/do {name}             # 홈 «받은함» 줄 단추 = 제안대로(inbox.execute 한 항목)
@@ -76,6 +78,7 @@
   POST /v1/changes  {since, wait}      # 볼트 바뀜 버스(11-23 · vaultwatch.py) — 누가 바꿨든 폰 범위 안의 바뀜을 since 뒤로 · 없으면 wait 초(25 상한) 붙잡음 → {seq, dirs, moves:[{src,dst,dir}], reset?}
                                        #   since 0 = 지금 seq 만 · reset = 폰이 받아 둔 목록을 다 버리고 다시 받는다 · GET /v1/file 404 의 moved = 옮긴 자리(옛 경로로 열 때)
   GET  /v1/approve                      # 폰 승인(11-17): 대기 수·가장 오래·run 별·동결·키 수(묶음 json 을 서버가 셈 · ping 의 approve 칸도 같은 셈)
+                                        #   순서(11-28): run 별 items[{kind,nn,order,blocked_by}] · cmds[].order·blocked_by = 적용기 status(있을 때만)
   GET  /v1/approve/bundle?run=          # 폰에 보낼 볼트 묶음 + 도전값 = 게이트 코어 적용기 approve.py challenge(부를 때마다 새 도전값)
                                         #   &form=bin(앱 판 36~) = 머리 JSON 한 줄 + diff 바이트(gzip) · &have=<폰 화면 all sha> 같으면 머리만(«same»)
   GET  /v1/approve/recent               # 최근 붙임·등록 기록(approve.py recent)
@@ -87,6 +90,7 @@
   (5분 순찰 = Claude 데스크톱 앱 로그인이 풀리면 폰에 «Claude 다시 로그인 필요» 한 번 · 11-20 · 기록 = _index/server/login-alert.json)
   (새벽 5시 순찰 = RC 다시 켜기 · 11-18 — 서버가 띄운 RC 이고 2시간 활동 없고 자식 세션이 안 일할 때만 자식째 끄고 다시 띄움 · 결과 = _index/server/rc-night.json)
   (시작 때 한 번 = RC 되살리기 · 11-27 — 서버가 띄운 RC 가 서버와 함께 사라졌으면(재부팅·로그오프·충돌) 다시 띄움 · 서버가 RC 죽음을 봤으면 안 함)
+  (5분 순찰 = 망 끊김 뒤 RC 다시 켜기 · 11-27 — 서버 몫 RC 가 망이 10분 넘게 끊겨 스스로 내려갔으면(rc.log «giving up») 망이 돌아온 순찰에 다시 띄움 · 하루 RC_NET_DAY 번)
 """
 import _socket
 import datetime
@@ -170,6 +174,9 @@ RC_ARGS = ('remote-control', '--permission-mode', 'auto')     # 사용자 결정
 RC_MODES = ('auto', 'default', 'acceptEdits', 'plan')    # 조리법 rc_mode 가 고를 수 있는 꼴(11-21) — 그 밖(권한 건너뛰기 등)은 auto 로
 RC_GAP, RC_DAY = 60, 10                             # 켜기 요청 상한(초 · 하루)
 RC_WATCH = 30                                       # 켠 뒤 지켜보는 초
+RC_NET_DAY = 6                                      # 망 끊김으로 내려간 RC 를 순찰이 다시 켜는 하루 상한(망이 «닿는데» RC 만 계속 내려가는 고리를 끊음)
+RC_NET_HOST = ('api.anthropic.com', 443)            # 망이 돌아왔나 — RC 가 붙는 곳에 TCP 만 열어 봄(보내는 것 없음)
+RC_GIVEUP = re.compile(r'Persistent errors for .{1,40}giving up')    # RC 가 망 끊김에 스스로 내려갈 때 rc.log 끝에 남기는 줄(11-27 17:29 잼)
 RC_LOG = os.path.join(STATE, 'rc.log')
 RC_LOG_MARK = os.path.join(STATE, 'rc-log.json')    # 지금 rc.log 를 «끝에만 쓰는 손잡이»로 열어 넘겼다는 표시 — 그때만 앞을 자른다(옛 손잡이면 자른 자리에 구멍이 생김)
 RC_LOG_MAX, RC_LOG_KEEP = 4 * 2 ** 20, 256 * 2 ** 10    # 넘으면 끝 256KB 만 남긴다(11-17 · RC 화면 다시 그리기로 115MB 까지 불었음)
@@ -681,13 +688,29 @@ def rc_seen_tick():
     if _rc_seen['pid'] != d['pid']:
         return None
     d['gone'] = int(time.time())
+    if rc_gave_up():
+        d['why'] = 'net'                        # 망 끊김으로 스스로 내려감 = 끈 것이 아님 → 순찰이 망을 보고 다시 켬(rc_net_tick)
     try:
         with open(RC_OWN, 'w', encoding='utf-8') as f:
             json.dump(d, f)
     except OSError:
         return None
-    log(f"RC 끝남 봄 pid={d['pid']} — 다음 시작 때 되살리지 않음")
+    if d.get('why') == 'net':
+        log(f"RC 끝남 봄 pid={d['pid']} — 망이 10분 넘게 끊겨 RC 가 스스로 내려감 · 망이 돌아오면 순찰이 다시 켬")
+    else:
+        log(f"RC 끝남 봄 pid={d['pid']} — 다음 시작 때 되살리지 않음")
     return 'gone'
+
+
+def rc_gave_up():
+    """지금 rc.log(이 RC 가 켤 때 새로 연 파일)의 끝이 «망 끊김에 스스로 내려감»인가 — 끝 8KB 만 읽고 화면 제어 문자를 지운다."""
+    try:
+        with open(RC_LOG, 'rb') as f:
+            f.seek(max(0, f.seek(0, 2) - 8192))
+            tail = f.read().decode('utf-8', 'replace')
+    except OSError:
+        return False
+    return bool(RC_GIVEUP.search(re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', tail)))
 
 
 def rc_resume_why(own, up, session):
@@ -699,6 +722,8 @@ def rc_resume_why(own, up, session):
         return 'RC 돎'
     if not own:
         return '서버가 띄운 RC 기록 없음'
+    if own.get('gone') and own.get('why') == 'net':
+        return '망 끊김으로 내려간 RC — 순찰이 망을 보고 다시 켬'
     if own.get('gone'):
         return '서버가 돌던 중에 RC 가 끝남(끔·실패) — 안 띄움'
     if rc_own_alive(own):
@@ -727,6 +752,83 @@ def rc_resume():
     if session != 0:
         rc_seen_tick()                          # 손 RC·이미 도는 RC 도 «봄»에 넣어 둔다
     log(f'RC 되살리기 {why}')
+    return why
+
+
+# ───────── 망 끊김 뒤 RC 다시 켜기(11-27) ─────────
+# 11-27 17:02 Wi-Fi 가 끊기자 RC 는 10분 뒤 «Persistent errors for 10 minutes, giving up» 을 남기고 폰 세션 셋(빅보스 포함)째 내려갔다.
+# 서버는 이것을 «끈 것»과 같은 gone 으로 적어 23:33 망이 돌아온 뒤에도 RC 가 꺼진 채였다. 이 경우만 why=net 으로 갈라 순찰이 다시 띄운다.
+# 내려간 폰 세션은 돌아오지 않는다(새 RC 는 새 세션) — 망이 없던 동안 폰에서 PC 를 다시 잡을 길을 되돌릴 뿐이다.
+_rc_net = {'day': '', 'n': 0}
+
+
+def rc_net_up():
+    """망이 돌아왔나 — RC_NET_HOST 에 TCP 연결만 열어 본다(5초)"""
+    try:
+        socket.create_connection(RC_NET_HOST, timeout=5).close()
+        return True
+    except OSError:
+        return False
+
+
+def rc_net_why(own, up, net, n):
+    """순수 판정 — 순찰이 망 끊김으로 내려간 서버 몫 RC 를 다시 켤까. net = 망이 닿나(부르는 쪽이 잼 · 해당 없으면 안 잼 → None) · n = 오늘 다시 켠 수.
+    돌려줌 = None(해당 없음) | '' (다시 켬) | 안 하는 까닭"""
+    if not own or not own.get('gone') or own.get('why') != 'net' or up or rc_own_alive(own):
+        return None
+    if net is None:
+        return None
+    if not net:
+        return '망 아직 없음'
+    if n >= RC_NET_DAY:
+        return f'오늘 {RC_NET_DAY}번 다 씀 — 손으로 켤 것(폰 «Claude 켜기»)'
+    return ''
+
+
+def rc_net_tick(net=None):
+    """5분 순찰 — 망 끊김으로 내려간 서버 몫 RC 를 망이 돌아오면 rc_resume 과 같은 길(구독·로그인 확인 → 띄움)로 다시 띄운다. 세션 0 은 안 함.
+    net = 시험용(참/거짓) · 없으면 해당될 때만 RC_NET_HOST 를 잼. 돌려줌 = None(해당 없음) | 결과 한 줄(로그는 다시 켬·못 켬·상한 처음만)"""
+    own = rc_own_load()
+    if rc_net_why(own, False, True, 0) is None:        # 망을 재기 전에 — 해당 없는 순찰(거의 전부)은 아무것도 안 함
+        return None
+    try:
+        import server_swap
+        if server_swap.session_of(os.getpid()) == 0:
+            return None
+    except Exception:  # noqa: BLE001 — 세션을 모르면 사용자 세션으로 친다
+        pass
+    day = time.strftime('%Y-%m-%d')
+    if _rc_net['day'] != day:
+        _rc_net.update(day=day, n=0)
+    with RC_LOCK:
+        own, up = rc_own_load(), rc_state()['up']
+        if up and own and own.get('why') == 'net':     # 다른 RC(터미널에서 손으로)가 돎 = 그만 — 그 RC 를 나중에 끄면 끈 것으로 둔다(다시 켜지 않음)
+            own.pop('why', None)
+            try:
+                with open(RC_OWN, 'w', encoding='utf-8') as f:
+                    json.dump(own, f)
+            except OSError:
+                return None
+            log('RC 망 끊김 뒤 다시 켜기 그만 — 다른 RC 가 돎')
+            return '다른 RC 가 돎'
+        why = rc_net_why(own, up, rc_net_up() if net is None else net, _rc_net['n'])
+        if why is None or why == '망 아직 없음':
+            return why
+        if why:
+            if _rc_net.get('told') != day:
+                _rc_net['told'] = day
+                log(f'RC 망 끊김 뒤 다시 켜기 {why}')
+            return why
+        _rc_net['n'] += 1
+        env = rc_env()
+        try:
+            p = rc_launch(rc_cmd(env), env)
+            why = f'다시 켬 pid={p.pid} · 오늘 {_rc_net["n"]}번째'
+        except Bad as e:
+            why = f'못 켬 — {e.msg}'
+        except OSError as e:
+            why = f'못 켬 — {type(e).__name__}: {e}'
+    log(f'RC 망 끊김 뒤 다시 켜기 {why}')
     return why
 
 
@@ -1218,6 +1320,202 @@ def alarm_power(b):
         if new != block:
             write_md(rel, text[:m.start(1)] + new + text[m.end(1):], '폰 상태 줄 종: 알림 ' + ('켬' if on else '끔'), True)
     return {'ok': True, 'on': alarms.load_settings()[0]['켬']}
+
+
+# ── 앱 안 볼트 설정(11-27 사용자 «볼트의 ui없는 설정파일로 넘어가서 고쳐야하는 것들을 앱 내에서 자체 ui로») ──
+# 알림-설정 노트 json 블록의 칸 몇(잘 시간·당김·미리 알림·울릴 일정·바로)과 config.json 의 칸 셋(집 Wi-Fi·민감 노트·일정 쓸 곳).
+# 안 다루는 것(사용자 11-27 ✦ 그대로): «켬»(전부 끄기는 PC 에서 · 11-17) · 문 번호·rc_mode·lock_ttl·alarms·push(Claude 몫·보안) · 과목·글자 · 일정별 알림(캘린더).
+# 쓰기는 write_md(fileops 바꾸기 = 장부·옛 판 휴지통·되돌리기) · 노트는 블록만 같은 꼴로 다시 씀(글 나머지 그대로) · 값 검사는 alarms.parse_settings 와 같은 규칙.
+SETTING_NOW = ('막힘', '옮겨짐', '늦게_앎', '새_공지')
+HHMM_RE = re.compile(r'([01]\d|2[0-3]):[0-5]\d')
+
+
+def _block_dump(d):
+    """알림-설정 json 블록 꼴 — 맨 바깥 칸은 한 줄씩 · «파일»만 펼침 · 나머지는 한 줄(사람이 쓴 꼴과 같음 · 11-27 실제 노트 왕복 일치)."""
+    out = []
+    for k, v in d.items():
+        kk = json.dumps(k, ensure_ascii=False)
+        if k == '파일' and isinstance(v, dict) and v:
+            inner = ',\n'.join(f'  {json.dumps(a, ensure_ascii=False)}: {json.dumps(c, ensure_ascii=False, separators=(", ", ": "))}' for a, c in v.items())
+            out.append(f' {kk}: {{\n{inner}\n }}')
+        else:
+            out.append(f' {kk}: {json.dumps(v, ensure_ascii=False, separators=(", ", ": "))}')
+    return '{\n' + ',\n'.join(out) + '\n}'
+
+
+def _settings_note():
+    """(글, 블록 match, 블록 dict) — 노트가 없거나 블록이 깨졌으면 Bad(앱은 «PC 에서»로 보임)."""
+    try:
+        with open(alarms.SETTINGS, encoding='utf-8', newline='') as f:
+            text = f.read()
+    except OSError:
+        raise Bad(404, '알림 설정 노트 없음')
+    m = re.search(r'```json[ \t]*\r?\n(.*?)\r?\n```', text, re.S)
+    if not m:
+        raise Bad(409, '설정 블록 없음')
+    try:
+        d = json.loads(m.group(1))
+    except ValueError:
+        raise Bad(409, '설정 블록이 깨짐 — PC 에서 고침')
+    if not isinstance(d, dict):
+        raise Bad(409, '설정 블록이 깨짐 — PC 에서 고침')
+    return text, m, d
+
+
+def _sched_files():
+    try:
+        return sorted(n for n in os.listdir(roles.abs('schedule')) if n.lower().endswith('.md'))
+    except OSError:
+        return []
+
+
+def settings_view():
+    """GET /v1/settings — 앱 «이 기기 알림»·«연결» 칸이 그리는 값(블록의 날 값 · 잘 시간이 꺼져도 부터·까지는 노트 그대로)."""
+    try:
+        _, _, d = _settings_note()
+        note = None
+    except Bad as e:
+        d, note = {}, e.msg
+    q = d.get('잘_시간') if isinstance(d.get('잘_시간'), dict) else {}
+    df = alarms.DEFAULTS
+    base = d.get('기본') if isinstance(d.get('기본'), dict) else {}
+    files = d.get('파일') if isinstance(d.get('파일'), dict) else {}
+    now = d.get('바로') if isinstance(d.get('바로'), dict) else {}
+    names = _sched_files()
+    rows = []
+    for n in names + [n for n in files if n != alarms.ALL_FILES and n not in names]:
+        r = files.get(n) if isinstance(files.get(n), dict) else None
+        on = (r is not None and not r.get('끔')) or (r is None and alarms.ALL_FILES in files and not (files[alarms.ALL_FILES] or {}).get('끔'))
+        rows.append({'name': n, 'on': bool(on), 'days': (r or {}).get('며칠_전'), 'here': n in names})
+    c = config()
+    home = c.get('home_wifi') if isinstance(c.get('home_wifi'), list) else []
+    return {'ok': note is None, 'why': note,
+            'quiet': {'on': q.get('켬', True) is not False, 'from': q.get('부터', df['잘_시간']['부터']), 'to': q.get('까지', df['잘_시간']['까지'])},
+            'pull': d.get('당겨_오기_분', df['당겨_오기_분']),
+            'before': {'days': base.get('며칠_전', df['기본']['며칠_전']), 'times': base.get('시각', df['기본']['시각'])},
+            'files': rows,
+            'now': {k: now.get(k, df['바로'][k]) is not False for k in SETTING_NOW},
+            'wifi': {'list': [str(x) for x in home], 'here': _net.get('ssid') or None if time.time() - _net.get('at', 0) < 600 else None},
+            'sensitive': 'hide' if hide_sensitive() else 'show',
+            'write': c.get('write_schedule') or '내-일정.md', 'schedules': names}
+
+
+def _note_set(change, why):
+    """블록 dict 를 change(d) 로 고쳐 같은 꼴로 씀 — 새 문제(parse_settings)가 생기면 400 · 같으면 안 씀."""
+    with WRITE:
+        text, m, d = _settings_note()
+        before = alarms.parse_settings(text)[1]
+        change(d)
+        block = _block_dump(d)
+        nl = '\r\n' if '\r\n' in m.group(1) else '\n'
+        new_text = text[:m.start(1)] + block.replace('\n', nl) + text[m.end(1):]
+        bad = [p for p in alarms.parse_settings(new_text)[1] if p not in before]
+        if bad:
+            raise Bad(400, bad[0])
+        if new_text != text:
+            write_md(os.path.relpath(alarms.SETTINGS, VAULT).replace('\\', '/'), new_text, '폰 설정: ' + why, True)
+
+
+def _conf_set(key, val, why):
+    with WRITE:
+        try:
+            with open(CONFIG, encoding='utf-8') as f:
+                c = json.load(f)
+        except (OSError, ValueError):
+            raise Bad(409, '서버 설정 파일이 깨짐 — PC 에서 고침')
+        if c.get(key) == val:
+            return
+        c[key] = val
+        write_md(os.path.relpath(CONFIG, VAULT).replace('\\', '/'), json.dumps(c, ensure_ascii=False, indent=1) + '\n', '폰 설정: ' + why, True)
+
+
+def settings_post(b):
+    """POST /v1/settings {set, value} — 칸 하나를 바꾸고 GET 과 같은 값을 돌려준다."""
+    k, v = b.get('set'), b.get('value')
+    if k == 'quiet':
+        if not isinstance(v, dict) or not all(a in ('on', 'from', 'to') for a in v):
+            raise Bad(400, 'quiet = {on, from, to}')
+        if 'on' in v and not isinstance(v['on'], bool) or any(a in v and not (isinstance(v[a], str) and HHMM_RE.fullmatch(v[a])) for a in ('from', 'to')):
+            raise Bad(400, '잘 시간 값이 잘못됨')
+
+        def ch(d):
+            q = d.get('잘_시간') if isinstance(d.get('잘_시간'), dict) else dict(alarms.DEFAULTS['잘_시간'])
+            for a, n in (('on', '켬'), ('from', '부터'), ('to', '까지')):
+                if a in v:
+                    q[n] = v[a]
+            d['잘_시간'] = q
+        _note_set(ch, '잘 시간 ' + json.dumps(v, ensure_ascii=False))
+    elif k == 'pull':
+        if type(v) is not int or not 15 <= v <= 1440:
+            raise Bad(400, '당김 = 15~1440 분')
+        _note_set(lambda d: d.__setitem__('당겨_오기_분', v), f'당김 {v}분')
+    elif k == 'before':
+        days, times = (v or {}).get('days'), (v or {}).get('times')
+        if not (isinstance(days, list) and days and all(type(x) is int and 0 <= x <= 365 for x in days)
+                and isinstance(times, list) and times and all(isinstance(x, str) and HHMM_RE.fullmatch(x) for x in times)):
+            raise Bad(400, '미리 알림 값이 잘못됨')
+        days = sorted(set(days), reverse=True)
+        times = sorted(set(times))
+
+        def ch(d):
+            base = d.get('기본') if isinstance(d.get('기본'), dict) else {}
+            base.update({'며칠_전': days, '시각': times})
+            d['기본'] = base
+        _note_set(ch, f'미리 알림 {days} {times}')
+    elif k == 'file':
+        name, on = (v or {}).get('name'), (v or {}).get('on')
+        if not isinstance(name, str) or name not in _sched_files() or not isinstance(on, bool):
+            raise Bad(400, '일정 파일 값이 잘못됨')
+
+        def ch(d):
+            files = d.get('파일') if isinstance(d.get('파일'), dict) else {}
+            if alarms.ALL_FILES in files:           # «*» = 전부 → 하나를 바꾸려면 지금 울리는 파일을 낱낱이 적는다
+                star = files.pop(alarms.ALL_FILES) or {}
+                for n in _sched_files():
+                    files.setdefault(n, dict(star))
+            r = files.get(name) if isinstance(files.get(name), dict) else {}
+            if on:
+                r.pop('끔', None)
+            else:
+                r['끔'] = True
+            files[name] = r
+            d['파일'] = files
+        _note_set(ch, f'울릴 일정 {name} ' + ('켬' if on else '끔'))
+    elif k == 'now':
+        if not isinstance(v, dict) or not v or not all(a in SETTING_NOW and isinstance(x, bool) for a, x in v.items()):
+            raise Bad(400, '바로 알림 값이 잘못됨')
+
+        def ch(d):
+            now = d.get('바로') if isinstance(d.get('바로'), dict) else dict(alarms.DEFAULTS['바로'])
+            now.update(v)
+            d['바로'] = now
+        _note_set(ch, '바로 알림 ' + json.dumps(v, ensure_ascii=False))
+    elif k == 'wifi':
+        c = config()
+        home = [str(x) for x in c.get('home_wifi')] if isinstance(c.get('home_wifi'), list) else []
+        if v == 'here':
+            name = ssid()
+            if not name:
+                raise Bad(409, 'PC Wi-Fi 를 모름')
+            if name not in home:
+                home.append(name)
+        elif isinstance(v, dict) and isinstance(v.get('remove'), str) and v['remove'] in home:
+            home.remove(v['remove'])
+        else:
+            raise Bad(400, 'wifi = "here" | {remove}')
+        _conf_set('home_wifi', home, '집 Wi-Fi')
+    elif k == 'sensitive':
+        if v != 'hide':                             # 폰에서는 숨기는 쪽만(사용자 11-27 ✦) — 폰을 잃었을 때 숨김을 풀 수 없게. 보이기는 PC 에서
+            raise Bad(403, '민감 노트 보이기는 PC 에서')
+        _conf_set('phone_sensitive', 'hide', '민감 노트 숨김')
+    elif k == 'write':
+        if not isinstance(v, str) or v not in _sched_files():
+            raise Bad(400, '일정 파일이 아님')
+        _conf_set('write_schedule', v, '일정 쓸 곳 ' + v)
+    else:
+        raise Bad(400, '모르는 설정')
+    log(f'설정 {k} ← {json.dumps(v, ensure_ascii=False)[:80]} ({req_device()})')
+    return settings_view()
 
 
 def alarm_act(b):
@@ -3581,8 +3879,27 @@ def approve_forget():
 
 def approve_status(q):
     n, oldest, runs = approve_count()
+    if runs:
+        approve_order(runs)
     return {'ok': True, 'waiting': n, 'oldest_min': oldest, 'runs': runs, 'frozen': approve_frozen(), 'keys': approve_keys(),
             'approver': os.path.isfile(APPROVER)}
+
+
+def approve_order(runs):
+    """순서(11-28): run 안 묶음·명령의 순서와 막힘(order · blocked_by '먼저: 묶음 03(대기)')은 적용기 status 가 잰다 - 서버는 나르기만.
+    적용기가 없거나 옛 판(items 없음)이면 아무것도 안 붙인다 = 지금 꼴(옛 앱도 그대로 · 막는 것은 어차피 적용기 challenge-cmd)."""
+    st = approve_cli('status', '--json', timeout=20)
+    by = {r.get('run'): r for r in st.get('runs') or [] if isinstance(r, dict)} if st.get('ok') else {}
+    for r in runs:
+        a = by.get(r['run'])
+        if not a or not isinstance(a.get('items'), list):
+            continue
+        r['items'], r['bundles_blocked_by'] = a['items'], a.get('bundles_blocked_by')
+        got = {c.get('id'): c for c in a.get('cmds') or [] if isinstance(c, dict)}
+        for c in r['cmds']:
+            x = got.get(c['id'])
+            if x:
+                c['order'], c['blocked_by'] = x.get('order'), x.get('blocked_by')
 
 
 def approve_bundle(q):
@@ -4322,6 +4639,8 @@ class H(http.server.BaseHTTPRequestHandler):
             return self.reply(200, upload_status(q))
         if u.path == '/v1/schedule':
             return self.reply(200, {'items': schedule_rows(min(int(q.get('days') or 60), 400))})
+        if u.path == '/v1/settings':
+            return self.reply(200, settings_view())
         if u.path == '/v1/alarms':
             app_seen(self.headers.get('X-Brain-App'), req_device())
             data, tag = alarms.payload(config().get('alarms'))
@@ -4581,7 +4900,7 @@ class H(http.server.BaseHTTPRequestHandler):
                 return self.reply(200, notechat_route.start(VAULT, b, lambda r: clean(r), phone_hidden) if path == '/v1/notechat' else notechat_route.stop(b))
             except notechat_route.NoteChatError as e:
                 raise Bad(e.code, e.msg)
-        fn = {'/v1/memo': memo, '/v1/note': note, '/v1/new': new_note, '/v1/schedule': add_schedule, '/v1/schedule/check': check_schedule, '/v1/schedule/merge': merge_schedule, '/v1/diag': diag, '/v1/rc': rc_start, '/v1/alarms/fired': lambda x: alarms.fired(x, None if req_device() == UNKNOWN_DEVICE else req_device()), '/v1/alarms/act': alarm_act, '/v1/rings': rings_check, '/v1/push': push_hold, '/v1/push/ack': push_ack_post, '/v1/push/emit': push_emit_post, '/v1/alarms/power': alarm_power, '/v1/alarms/mute': alarm_mute,
+        fn = {'/v1/memo': memo, '/v1/note': note, '/v1/new': new_note, '/v1/schedule': add_schedule, '/v1/schedule/check': check_schedule, '/v1/schedule/merge': merge_schedule, '/v1/diag': diag, '/v1/rc': rc_start, '/v1/alarms/fired': lambda x: alarms.fired(x, None if req_device() == UNKNOWN_DEVICE else req_device()), '/v1/alarms/act': alarm_act, '/v1/rings': rings_check, '/v1/push': push_hold, '/v1/push/ack': push_ack_post, '/v1/push/emit': push_emit_post, '/v1/alarms/power': alarm_power, '/v1/alarms/mute': alarm_mute, '/v1/settings': settings_post,
               '/v1/work/finish': work_finish, '/v1/inbox/do': inbox_do, '/v1/undo': undo, '/v1/fileop': fileop, '/v1/fileops': fileops_many, '/v1/todo/check': todo_check, '/v1/trash/restore': trash_restore, '/v1/ink': ink, '/v1/marks': marks_post, '/v1/lock': lock, '/v1/watch': watch, '/v1/changes': changes_post,
               '/v1/format/set': format_set, '/v1/view/act': view_act, '/v1/ready': ready_post,
               '/v1/approve/sign': approve_sign, '/v1/approve/reject': approve_reject, '/v1/approve/freeze': approve_freeze, '/v1/approve/enroll': approve_enroll}.get(path)
@@ -4647,6 +4966,7 @@ def main():
                     log(f'RC 새벽 순찰 오류 {type(e).__name__}: {e}')
                 try:
                     rc_seen_tick()
+                    rc_net_tick()               # 방금 gone(net)을 적었으면 망이 닿을 때 바로 다시 켬(망이 없으면 다음 순찰)
                 except Exception as e:  # noqa: BLE001
                     log(f'RC 봄 순찰 오류 {type(e).__name__}: {e}')
                 try:
